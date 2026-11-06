@@ -196,6 +196,9 @@ def run(
     cwd_str = str(cwd) if cwd is not None else None
     if env is None:
         env = dict(os.environ)
+    extra: dict[str, int] = {}
+    if platform.system() == "Windows":
+        extra["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
     try:
         result = subprocess.run(
             cmd,
@@ -208,6 +211,7 @@ def run(
             encoding="utf-8",
             errors="replace",
             input=input_text,
+            **extra,
         )
         if result.stdout:
             for line in result.stdout.splitlines():

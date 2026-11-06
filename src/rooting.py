@@ -15,6 +15,8 @@ _SRC_DIR = Path(__file__).resolve().parent
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
+CREATE_NO_WINDOW = 0x08000000 if platform.system() == "Windows" else 0
+
 try:
     from config import get_target_image_info, load_config
     from constants import (
@@ -72,6 +74,7 @@ def ensure_rootavd_tool(target_dir: Path = ROOTAVD_DIR) -> bool:
             encoding="utf-8",
             errors="replace",
             check=False,
+            creationflags=CREATE_NO_WINDOW,
         )
         if res.returncode != 0:
             _log(f"[bold red]Failed to clone rootAVD:[/bold red] {res.stderr}")
@@ -94,6 +97,7 @@ def is_emulator_running(adb_bin: Path, env: dict[str, str]) -> bool:
             timeout=5,
             env=env,
             check=False,
+            creationflags=CREATE_NO_WINDOW,
         )
         return res.returncode == 0 and res.stdout.strip() == "device"
     except Exception:
@@ -114,6 +118,7 @@ def wait_for_boot(adb_bin: Path, env: dict[str, str], timeout: int = 120) -> boo
                 timeout=10,
                 env=env,
                 check=False,
+                creationflags=CREATE_NO_WINDOW,
             )
             if res.stdout.strip() == "1":
                 return True
@@ -185,6 +190,7 @@ def root_avd(
                     errors="replace",
                     timeout=5,
                     check=False,
+                    creationflags=CREATE_NO_WINDOW,
                 )
                 out = (accel_check.stdout + accel_check.stderr).lower()
                 if accel_check.returncode != 0 or "not installed" in out or "not operational" in out:
@@ -203,7 +209,7 @@ def root_avd(
                 "-no-window",
                 "-no-audio",
             ]
-            emu_proc = subprocess.Popen(emu_cmd, env=env)
+            emu_proc = subprocess.Popen(emu_cmd, env=env, creationflags=CREATE_NO_WINDOW)
 
             _log("[dim]Waiting for emulator to boot up...[/dim]")
             if not wait_for_boot(adb_bin, env, timeout=120):
@@ -228,6 +234,7 @@ def root_avd(
                 encoding="utf-8",
                 errors="replace",
                 check=False,
+                creationflags=CREATE_NO_WINDOW,
             )
 
             if res.returncode != 0:
@@ -284,5 +291,14 @@ def root_avd(
                 emu_proc.wait(timeout=8)
             except Exception:
                 emu_proc.kill()
-            subprocess.run([str(adb_bin), "-e", "emu", "kill"], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, check=False)
+            subprocess.run(
+                [str(adb_bin), "-e", "emu", "kill"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+                check=False,
+                creationflags=CREATE_NO_WINDOW,
+            )
 

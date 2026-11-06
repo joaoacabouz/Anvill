@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import platform
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,8 @@ from typing import Any, Dict
 _SRC_DIR = Path(__file__).resolve().parent
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
+
+CREATE_NO_WINDOW = 0x08000000 if platform.system() == "Windows" else 0
 
 try:
     from config import load_config
@@ -179,7 +182,7 @@ def apply_real_device_hardening(
             }
 
     # 1. Elevate via adb root
-    subprocess.run([str(adb_bin), "-e", "root"], capture_output=True, env=env, check=False)
+    subprocess.run([str(adb_bin), "-e", "root"], capture_output=True, env=env, check=False, creationflags=CREATE_NO_WINDOW)
     time.sleep(1)
 
     # 2. Deploy persistent boot scripts
@@ -194,6 +197,7 @@ def apply_real_device_hardening(
             capture_output=True,
             env=env,
             check=False,
+            creationflags=CREATE_NO_WINDOW,
         )
         deploy_cmd = (
             "mkdir -p /data/adb/service.d /data/adb/post-fs-data.d && "
@@ -202,14 +206,14 @@ def apply_real_device_hardening(
             "chmod 755 /data/adb/service.d/99-anvill-realdevice.sh /data/adb/post-fs-data.d/99-anvill-realdevice.sh && "
             "rm -f /data/local/tmp/99-anvill-realdevice.sh"
         )
-        subprocess.run([str(adb_bin), "-e", "shell", deploy_cmd], capture_output=True, env=env, check=False)
+        subprocess.run([str(adb_bin), "-e", "shell", deploy_cmd], capture_output=True, env=env, check=False, creationflags=CREATE_NO_WINDOW)
     finally:
         tmp_path.unlink(missing_ok=True)
 
     # 3. Apply properties live in current session
     applied_count = 0
     for key, val in props.items():
-        res = subprocess.run([str(adb_bin), "-e", "shell", "setprop", key, val], capture_output=True, env=env, check=False)
+        res = subprocess.run([str(adb_bin), "-e", "shell", "setprop", key, val], capture_output=True, env=env, check=False, creationflags=CREATE_NO_WINDOW)
         if res.returncode == 0:
             applied_count += 1
 
@@ -219,12 +223,12 @@ def apply_real_device_hardening(
         "settings put global development_settings_enabled 0; "
         "settings put secure mock_location 0"
     )
-    subprocess.run([str(adb_bin), "-e", "shell", settings_cmd], capture_output=True, env=env, check=False)
+    subprocess.run([str(adb_bin), "-e", "shell", settings_cmd], capture_output=True, env=env, check=False, creationflags=CREATE_NO_WINDOW)
 
     # 5. Enable Magisk DenyList
-    subprocess.run([str(adb_bin), "-e", "shell", "magisk --denylist enable 2>/dev/null"], capture_output=True, env=env, check=False)
-    subprocess.run([str(adb_bin), "-e", "shell", "magisk --denylist add com.google.android.gms com.google.android.gms.unstable 2>/dev/null"], capture_output=True, env=env, check=False)
-    subprocess.run([str(adb_bin), "-e", "shell", "magisk --denylist add com.google.android.vending 2>/dev/null"], capture_output=True, env=env, check=False)
+    subprocess.run([str(adb_bin), "-e", "shell", "magisk --denylist enable 2>/dev/null"], capture_output=True, env=env, check=False, creationflags=CREATE_NO_WINDOW)
+    subprocess.run([str(adb_bin), "-e", "shell", "magisk --denylist add com.google.android.gms com.google.android.gms.unstable 2>/dev/null"], capture_output=True, env=env, check=False, creationflags=CREATE_NO_WINDOW)
+    subprocess.run([str(adb_bin), "-e", "shell", "magisk --denylist add com.google.android.vending 2>/dev/null"], capture_output=True, env=env, check=False, creationflags=CREATE_NO_WINDOW)
 
     # 6. Harden host AVD config.ini
     harden_avd_config(avd_root, avd_name, props, config=config)

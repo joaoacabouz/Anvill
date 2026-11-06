@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,8 @@ from pathlib import Path
 _SRC_DIR = Path(__file__).resolve().parent
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
+
+CREATE_NO_WINDOW = 0x08000000 if platform.system() == "Windows" else 0
 
 try:
     from config import get_bloatware_packages, get_protected_packages, load_config
@@ -34,7 +37,7 @@ def debloat_android(adb_bin: Path, env: dict[str, str], config: dict | None = No
 
     _log("[cyan]Debloating Android image (stripping non-essential packages)...[/cyan]")
     # Elevate via adb root if available
-    subprocess.run([str(adb_bin), "-e", "root"], capture_output=True, env=env, check=False)
+    subprocess.run([str(adb_bin), "-e", "root"], capture_output=True, env=env, check=False, creationflags=CREATE_NO_WINDOW)
     time.sleep(1)
 
     res = subprocess.run(
@@ -46,6 +49,7 @@ def debloat_android(adb_bin: Path, env: dict[str, str], config: dict | None = No
         timeout=30,
         env=env,
         check=False,
+        creationflags=CREATE_NO_WINDOW,
     )
     if res.returncode != 0:
         _log(f"[yellow]Warning: Could not list packages via ADB: {res.stderr.strip()}[/yellow]")
@@ -73,6 +77,7 @@ def debloat_android(adb_bin: Path, env: dict[str, str], config: dict | None = No
                     timeout=10,
                     env=env,
                     check=False,
+                    creationflags=CREATE_NO_WINDOW,
                 )
                 removed += 1
                 _log(f"  [dim]- Removed bloatware:[/dim] [yellow]{pkg}[/yellow]")
@@ -92,14 +97,20 @@ def debloat_android(adb_bin: Path, env: dict[str, str], config: dict | None = No
         tmp.write(debloat_script)
         tmp_path = Path(tmp.name)
     try:
-        subprocess.run([str(adb_bin), "-e", "push", str(tmp_path), "/data/local/tmp/98-anvill-debloat.sh"], capture_output=True, env=env, check=False)
+        subprocess.run(
+            [str(adb_bin), "-e", "push", str(tmp_path), "/data/local/tmp/98-anvill-debloat.sh"],
+            capture_output=True,
+            env=env,
+            check=False,
+            creationflags=CREATE_NO_WINDOW,
+        )
         deploy_cmd = (
             "mkdir -p /data/adb/service.d && "
             "cp /data/local/tmp/98-anvill-debloat.sh /data/adb/service.d/98-anvill-debloat.sh && "
             "chmod 755 /data/adb/service.d/98-anvill-debloat.sh && "
             "rm -f /data/local/tmp/98-anvill-debloat.sh"
         )
-        subprocess.run([str(adb_bin), "-e", "shell", deploy_cmd], capture_output=True, env=env, check=False)
+        subprocess.run([str(adb_bin), "-e", "shell", deploy_cmd], capture_output=True, env=env, check=False, creationflags=CREATE_NO_WINDOW)
     finally:
         tmp_path.unlink(missing_ok=True)
 

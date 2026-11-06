@@ -318,6 +318,7 @@ class PlayerView(QWidget):
         self._embed_timer: Optional[QTimer] = None
         self._detect_timer: Optional[QTimer] = None
         self._watchdog_timer: Optional[QTimer] = None
+        self._watchdog_paused: bool = False
 
         self.setAcceptDrops(True)
         self._setup_ui()
@@ -648,35 +649,70 @@ class PlayerView(QWidget):
             return
 
         self._embed_hwnd(disp_hwnd, toolbars)
-        self.stack.setCurrentIndex(1)
-        self.status_changed.emit("running")
+        self.show_running_player()
 
-    def _start_emulator(self) -> None:
+    def pause_watchdog(self, paused: bool) -> None:
+        """Temporarily pauses the watchdog timer when modal dialogs are active."""
+        self._watchdog_paused = paused
+        if paused and self._watchdog_timer and self._watchdog_timer.isActive():
+            self._watchdog_timer.stop()
+        elif not paused and self._watchdog_timer and not self._watchdog_timer.isActive():
+            self._watchdog_timer.start()
+
+    def show_running_player(self) -> None:
+        """Presents the active player page with docked emulator display."""
+        self.stack.setCurrentIndex(1)
+        self.boot_overlay.setVisible(False)
+        self.status_changed.emit("running")
+        self._sync_geometry()
+
+    def start_boot_session(
+        self,
+        hw_profile: str = "auto",
+        spoof_profile: str = "galaxy_tab_s9",
+        status_callback=None,
+        finished_callback=None,
+    ) -> bool:
+        """Starts background boot process, wiring status notifications to an external watcher (e.g. SplashScreen)."""
         disp_hwnd, toolbars = find_emulator_windows(self.avd_name)
         if disp_hwnd:
-            self._attach_detected_window()
-            return
+            self._embed_hwnd(disp_hwnd, toolbars)
+            self.show_running_player()
+            if finished_callback:
+                finished_callback(True, "")
+            return True
 
+        self.stack.setCurrentIndex(1)
         self.boot_overlay.setVisible(True)
         self.boot_title_lbl.setText("Starting Android Tablet...")
         self.boot_status_lbl.setText("Initializing QEMU engine in 16:9 widescreen...")
-        self.stack.setCurrentIndex(1)
         self.status_changed.emit("booting")
-
-        hw = self.hw_combo.currentText()
-        spoof = self.spoof_combo.currentText()
 
         self.boot_worker = EmulatorBootWorker(
             avd_name=self.avd_name,
-            hw_profile=hw,
-            spoof_profile=spoof,
+            hw_profile=hw_profile,
+            spoof_profile=spoof_profile,
             cold_boot=False,
         )
-        self.boot_worker.status_signal.connect(self.boot_status_lbl.setText)
-        self.boot_worker.booted_signal.connect(self._on_boot_result)
-        self.boot_worker.start()
 
+        if status_callback:
+            self.boot_worker.status_signal.connect(status_callback)
+        self.boot_worker.status_signal.connect(self.boot_status_lbl.setText)
+
+        def _on_finish(success: bool, err_msg: str):
+            self._on_boot_result(success, err_msg)
+            if finished_callback:
+                finished_callback(success, err_msg)
+
+        self.boot_worker.booted_signal.connect(_on_finish)
+        self.boot_worker.start()
         self._start_fast_embedding_poll()
+        return True
+
+    def _start_emulator(self) -> None:
+        hw = self.hw_combo.currentText()
+        spoof = self.spoof_combo.currentText()
+        self.start_boot_session(hw, spoof)
 
     def _start_fast_embedding_poll(self) -> None:
         if self._embed_timer:
@@ -727,6 +763,11 @@ class PlayerView(QWidget):
         if not user32 or not self.embedded_hwnd:
             return
 
+        from PySide6.QtWidgets import QApplication
+        # If any modal dialog is open or watchdog is paused, do not reposition or alter Z-order
+        if QApplication.activeModalWidget() or getattr(self, "_watchdog_paused", False):
+            return
+
         top_win = self.window()
         # If top window is minimized, hidden or if Player page is not active in stack, hide emulator window
         if not top_win or top_win.isMinimized() or not self.isVisible() or self.stack.currentIndex() != 1:
@@ -771,12 +812,12 @@ class PlayerView(QWidget):
 
         user32.SetWindowPos(
             self.embedded_hwnd,
-            0,  # HWND_TOP
+            0,
             target_x,
             target_y,
             target_w,
             target_h,
-            0x0040 | 0x0020 | 0x0010,  # SWP_SHOWWINDOW | SWP_FRAMECHANGED | SWP_NOACTIVATE
+            0x0040 | 0x0020 | 0x0010 | 0x0004,  # SWP_SHOWWINDOW | SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER
         )
 
     # Public aliases for external synchronizers

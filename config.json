@@ -14,7 +14,7 @@
       "max_fps": 120,
       "video_bit_rate": "16M"
     },
-    "theme": "crimson_red"
+    "theme": "cyber_cyan"
   },
   "debloat": {
     "enabled_by_default": true,

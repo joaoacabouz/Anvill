@@ -173,6 +173,21 @@ class TestGUI(unittest.TestCase):
         self.assertFalse(pv.recents_btn.icon().isNull())
         self.assertFalse(pv.stop_btn.icon().isNull())
 
+    def test_settings_dialog_stays_on_top(self):
+        """SettingsDialog has WindowStaysOnTopHint set to prevent rendering behind docked emulator."""
+        from PySide6.QtCore import Qt
+        parent = QWidget()
+        theme = get_theme("cyber_cyan")
+        dlg = SettingsDialog(parent=parent, palette=theme)
+        self.assertTrue(bool(dlg.windowFlags() & Qt.WindowStaysOnTopHint))
+
+    def test_logger_setup(self):
+        """setup_logging creates valid log file and does not fail."""
+        from logger import setup_logging, LOG_FILE
+        log_path = setup_logging()
+        self.assertEqual(log_path, LOG_FILE)
+        self.assertTrue(log_path.parent.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -66,8 +66,12 @@ class MainWindow(QMainWindow):
         # 2. Stacked Content Area
         self.stack = QStackedWidget()
 
-        # Page 0: Splash Screen
-        self.splash_screen = SplashScreen(self, self.current_palette, self.avd_name)
+        # Page 2 Component: Emulator Player (instantiated first to allow splash boot coordination)
+        self.player_view = PlayerView(self, self.current_palette, self.avd_name)
+        self.player_view.status_changed.connect(self.title_bar.set_status)
+
+        # Page 0: Splash Screen (boots emulator directly if setup is already complete)
+        self.splash_screen = SplashScreen(self, self.current_palette, self.avd_name, player_view=self.player_view)
         self.splash_screen.splash_finished.connect(self._on_splash_finished)
         self.stack.addWidget(self.splash_screen)
 
@@ -76,9 +80,7 @@ class MainWindow(QMainWindow):
         self.setup_wizard.setup_completed.connect(self._on_setup_completed)
         self.stack.addWidget(self.setup_wizard)
 
-        # Page 2: Emulator Player
-        self.player_view = PlayerView(self, self.current_palette, self.avd_name)
-        self.player_view.status_changed.connect(self.title_bar.set_status)
+        # Page 2 in Stack: Emulator Player
         self.stack.addWidget(self.player_view)
         self.stack.currentChanged.connect(self._on_stack_page_changed)
 
@@ -120,22 +122,30 @@ class MainWindow(QMainWindow):
             pass
 
     def _open_settings(self) -> None:
-        dlg = SettingsDialog(self, self.current_palette)
-        dlg.theme_selected.connect(self._on_theme_changed)
-        if dlg.exec():
-            # Refresh AVD name if changed
-            self.cfg = load_config()
-            new_name = self.cfg.get("vm", {}).get("avd_name", DEFAULT_AVD_NAME)
-            if new_name != self.avd_name:
-                self.avd_name = new_name
-                self.title_bar.set_avd_name(new_name)
-                self.player_view.avd_name = new_name
+        if hasattr(self, "player_view"):
+            self.player_view.pause_watchdog(True)
+        try:
+            dlg = SettingsDialog(self, self.current_palette)
+            dlg.theme_selected.connect(self._on_theme_changed)
+            if dlg.exec():
+                # Refresh AVD name if changed
+                self.cfg = load_config()
+                new_name = self.cfg.get("vm", {}).get("avd_name", DEFAULT_AVD_NAME)
+                if new_name != self.avd_name:
+                    self.avd_name = new_name
+                    self.title_bar.set_avd_name(new_name)
+                    self.player_view.avd_name = new_name
+        finally:
+            if hasattr(self, "player_view"):
+                self.player_view.pause_watchdog(False)
+                self.player_view.sync_geometry()
 
     def _on_splash_finished(self, setup_ready: bool) -> None:
         if setup_ready:
-            # Setup already done -> go directly to Player
+            # Setup complete & emulator fully opened -> switch directly to active Player
             self.stack.setCurrentIndex(2)
-            self.title_bar.set_status("offline")
+            self.player_view.show_running_player()
+            self.title_bar.set_status("running")
         else:
             # First run -> go to Setup Wizard
             self.stack.setCurrentIndex(1)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Optional
 from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
@@ -38,11 +39,19 @@ class SplashScreen(QWidget):
     # Signal emits True if setup is already complete, False if first-run setup is required
     splash_finished = Signal(bool)
 
-    def __init__(self, parent: QWidget, palette: ThemePalette, avd_name: str = DEFAULT_AVD_NAME):
+    def __init__(
+        self,
+        parent: QWidget,
+        palette: ThemePalette,
+        avd_name: str = DEFAULT_AVD_NAME,
+        player_view: Optional[Any] = None,
+    ):
         super().__init__(parent)
         self.palette = palette
         self.avd_name = avd_name
+        self.player_view = player_view
         self._progress_val = 0
+        self._boot_started = False
 
         self._setup_ui()
         self.update_palette(palette)
@@ -121,19 +130,68 @@ class SplashScreen(QWidget):
         self._timer.start()
 
     def _step(self) -> None:
-        self._progress_val += 2
-        self.progress_bar.setValue(min(100, self._progress_val))
+        ready = is_setup_completed(avd_name=self.avd_name)
 
-        if self._progress_val == 30:
-            self.status_lbl.setText("Checking WHPX / hardware virtualization...")
-        elif self._progress_val == 60:
-            self.status_lbl.setText("Scanning local SDK & AVD profiles...")
-        elif self._progress_val >= 100:
-            self._timer.stop()
-            ready = is_setup_completed(avd_name=self.avd_name)
-            if ready:
-                self.status_lbl.setText("✓ Ready! Loading Player...")
-            else:
+        if not ready:
+            # First-time setup is required -> advance to 100% and transition to Setup Wizard
+            self._progress_val += 4
+            self.progress_bar.setValue(min(100, self._progress_val))
+            if self._progress_val >= 100:
+                self._timer.stop()
                 self.status_lbl.setText("First run detected. Preparing Setup Wizard...")
-            QTimer.singleShot(400, lambda: self.splash_finished.emit(ready))
+                QTimer.singleShot(350, lambda: self.splash_finished.emit(False))
+            return
+
+        # Setup is already complete! If player_view is available, track real emulator boot until 100%
+        if self.player_view and hasattr(self.player_view, "start_boot_session"):
+            if not self._boot_started:
+                self._boot_started = True
+                self._progress_val = 15
+                self.progress_bar.setValue(15)
+                self.status_lbl.setText("Checking hardware acceleration (WHPX)...")
+
+                self.player_view.start_boot_session(
+                    status_callback=self._on_boot_status,
+                    finished_callback=self._on_boot_finished,
+                )
+            return
+
+        # Fallback if player_view is not passed (e.g. standalone test)
+        self._progress_val += 4
+        self.progress_bar.setValue(min(100, self._progress_val))
+        if self._progress_val >= 100:
+            self._timer.stop()
+            self.status_lbl.setText("✓ Ready! Loading Player...")
+            QTimer.singleShot(300, lambda: self.splash_finished.emit(True))
+
+    def _on_boot_status(self, text: str) -> None:
+        """Dynamically increments the progress bar according to real boot milestones."""
+        self.status_lbl.setText(text)
+        low = text.lower()
+        if "hardware" in low or "resolving" in low:
+            self._progress_val = max(self._progress_val, 25)
+        elif "tablet" in low or "configuring" in low:
+            self._progress_val = max(self._progress_val, 40)
+        elif "launching" in low or "qemu" in low:
+            self._progress_val = max(self._progress_val, 55)
+        elif "connection" in low or "adb" in low:
+            self._progress_val = max(self._progress_val, 72)
+        elif "boot" in low or "waiting" in low:
+            self._progress_val = max(self._progress_val, 86)
+        elif "anti-detection" in low or "spoofing" in low or "docking" in low:
+            self._progress_val = max(self._progress_val, 95)
+        elif "ready" in low or "running" in low:
+            self._progress_val = 100
+        self.progress_bar.setValue(self._progress_val)
+
+    def _on_boot_finished(self, success: bool, err_msg: str) -> None:
+        if self._timer and self._timer.isActive():
+            self._timer.stop()
+        if success:
+            self.progress_bar.setValue(100)
+            self.status_lbl.setText("✓ Android Tablet ready and running!")
+            QTimer.singleShot(300, lambda: self.splash_finished.emit(True))
+        else:
+            self.status_lbl.setText(f"Boot error: {err_msg}")
+            QTimer.singleShot(500, lambda: self.splash_finished.emit(True))
 

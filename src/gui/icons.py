@@ -75,3 +75,4 @@ def get_svg_icon(
     icon.addPixmap(pix_active, QIcon.Selected)
 
     return icon
+

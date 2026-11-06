@@ -20,9 +20,12 @@ from PySide6.QtWidgets import QApplication
 
 from gui.app import MainWindow
 from gui.icons import get_svg_icon
+from logger import setup_logging
 
 
 def main() -> int:
+    setup_logging()
+
     # High-DPI support
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"

@@ -62,6 +62,9 @@ class AdbManager:
             else:
                 cmd.extend(["-s", self.serial])
         cmd.extend(args)
+        extra: dict[str, int] = {}
+        if platform.system() == "Windows":
+            extra["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
         return subprocess.run(
             cmd,
             check=False,
@@ -71,6 +74,7 @@ class AdbManager:
             errors="replace",
             timeout=timeout,
             env=self.env,
+            **extra,
         )
 
     def wait_for_device(self, timeout: int = 120, interval: float = 1.0) -> bool:

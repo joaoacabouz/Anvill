@@ -159,6 +159,10 @@ class EmulatorLauncher:
         _log(f"[dim]Command: {' '.join(args)}[/dim]")
         _log(f"[dim]GPU: {self.flags.gpu_mode} | Acceleration: {'on' if self.flags.use_accel else 'off'}[/dim]")
 
+        extra: dict[str, int] = {}
+        if platform.system() == "Windows":
+            extra["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+
         self.process = subprocess.Popen(
             args,
             stdin=subprocess.DEVNULL,
@@ -166,6 +170,7 @@ class EmulatorLauncher:
             stderr=subprocess.STDOUT,
             bufsize=0,
             env=self.env,
+            **extra,
         )
         self._output_thread = threading.Thread(target=self._stream_output, daemon=True)
         self._output_thread.start()
