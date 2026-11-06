@@ -50,8 +50,22 @@ A modular, 100% portable, hardware-adaptive **Python 3.10+** command-line tool t
 
 ```text
 Anvill/
+├── anvill/                       # Core modular Python package
+│   ├── adb.py                    # ADB device connection, boot polling & prop spoofing
+│   ├── config.py                 # Config loader & validator for config.json
+│   ├── configurator.py           # AVD config.ini parser, atomic writer & path healer
+│   ├── constants.py              # Repository paths, directory defaults & constants
+│   ├── debloat.py                # Android system image debloater (preserves Play Store & GMS)
+│   ├── hardening.py              # Anti-detection scripts, QEMU suppression & sensor injection
+│   ├── inspector.py              # Host hardware inspector (CPU, RAM, GPU, WHPX)
+│   ├── launcher.py               # Emulator process manager, GPU args & Scrcpy launcher
+│   ├── profiles.py               # Hardware & device profile manager (profiles.json)
+│   ├── provisioner.py            # SDK bootstrap, direct Java SdkManager & AVD creation
+│   ├── rooting.py                # Automated Magisk ramdisk patching via rootAVD
+│   ├── ui.py                     # Rich console banners, tables and log utilities
+│   └── __init__.py               # Clean package exports
 ├── android-sdk/                  # Portable Android SDK (downloaded automatically)
-│   ├── cmdline-tools/latest/     # sdkmanager, avdmanager
+│   ├── cmdline-tools/latest/     # SdkManager & AvdManager tools
 │   ├── emulator/                 # Google QEMU emulator engine (emulator.exe)
 │   ├── platform-tools/           # ADB tools (adb.exe)
 │   └── system-images/android-36/ # Android 16 Google APIs x86_64 system image
@@ -59,16 +73,18 @@ Anvill/
 │   ├── Android16_Pro.ini
 │   └── Android16_Pro.avd/
 ├── .android/                     # Isolated Android user configuration & ADB keys
-├── jdk/                          # (Optional) Portable OpenJDK 17 if host lacks Java
+├── jdk/                          # Portable OpenJDK 17 (auto-downloaded if host lacks Java)
 ├── tools/                        # Helper utilities (rootAVD for Magisk patching)
-├── android_vm.py                 # Main CLI orchestrator & Interactive TUI
+├── tests/                        # Comprehensive test suite
+│   ├── __init__.py
+│   └── test_anvill.py
+├── android_vm.py                 # Main CLI launcher & Interactive TUI
 ├── setup_sdk.py                  # Standalone portable SDK & AVD bootstrap
 ├── root_avd.py                   # Automated Magisk root, debloat & hardening provisioner
-├── config.py                     # Central configuration loader
 ├── config.json                   # General runtime, debloat, hardening & SDK settings
 ├── profiles.json                 # Hardware and Device Spoofing profiles (device specs)
 ├── requirements.txt              # Minimal Python dependencies (psutil, rich)
-├── test_android_vm.py            # Comprehensive test suite (100% passing)
+├── test_android_vm.py            # Quick test entrypoint (100% passing)
 ├── run.bat                       # Quick launcher (calls python android_vm.py)
 ├── setup.bat                     # Quick installer (calls python setup_sdk.py -y)
 ├── root.bat                      # Quick root patcher (calls python root_avd.py)
