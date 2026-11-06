@@ -321,8 +321,32 @@ def test_harden_avd_config_hardware_sensors():
     print("✓ harden_avd_config enforces PlayStore, Samsung hardware identity & physical sensors")
 
 
+def test_config_json_separation():
+    import config
+    cfg = config.load_config()
+    assert "vm" in cfg, "Missing 'vm' section in config.json"
+    assert "debloat" in cfg, "Missing 'debloat' section in config.json"
+    assert "hardening" in cfg, "Missing 'hardening' section in config.json"
+    assert "sdk" in cfg, "Missing 'sdk' section in config.json"
+
+    # Verify debloat and protected lists
+    assert len(cfg["debloat"]["bloatware_packages"]) >= 30
+    assert "com.android.vending" in cfg["debloat"]["protected_packages"]
+    assert "com.google.android.gms" in cfg["debloat"]["protected_packages"]
+
+    # Verify profiles.json does NOT contain mixed configs
+    profiles = vm.load_profiles()
+    assert "hardware_profiles" in profiles
+    assert "spoof_profiles" in profiles
+    assert "debloat" not in profiles, "debloat should be in config.json, not profiles.json"
+    assert "hardening" not in profiles, "hardening should be in config.json, not profiles.json"
+    assert "sdk" not in profiles, "sdk should be in config.json, not profiles.json"
+    print("✓ config.json is cleanly separated from profiles.json")
+
+
 if __name__ == "__main__":
     test_profiles_json_load()
+    test_config_json_separation()
     test_hardware_profiles_resolution()
     test_auto_profile_thresholds()
     test_spoof_profiles()

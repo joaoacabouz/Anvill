@@ -73,31 +73,45 @@ except ImportError:
 
 CONSOLE: Console | None = Console() if _HAS_RICH else None
 
+from config import load_config
+
 # ---------------------------------------------------------------------------
-# Portable Directory Paths (dp0 - Repo-Local)
+# Portable Directory Paths (dp0 - Repo-Local) & Configurations
 # ---------------------------------------------------------------------------
 REPO_ROOT: Path = Path(__file__).resolve().parent
 DEFAULT_SDK_ROOT: Path = REPO_ROOT / "android-sdk"
 DEFAULT_AVD_ROOT: Path = REPO_ROOT / "avds"
 DEFAULT_USER_HOME: Path = REPO_ROOT / ".android"
 DEFAULT_JDK_ROOT: Path = REPO_ROOT / "jdk"
-DEFAULT_AVD_NAME: str = "Android16_Pro"
 
-# Official download URLs
-COMMAND_LINE_TOOLS_URL = (
-    "https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip"
+_CONFIG = load_config()
+_VM_CFG = _CONFIG.get("vm", {})
+_SDK_CFG = _CONFIG.get("sdk", {})
+
+DEFAULT_AVD_NAME: str = _VM_CFG.get("avd_name", "Android16_Pro")
+
+# Official download URLs from config.json
+COMMAND_LINE_TOOLS_URL: str = _SDK_CFG.get(
+    "command_line_tools_url",
+    "https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip",
 )
-ADOPTIUM_JDK_17_URL = (
-    "https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse"
+ADOPTIUM_JDK_17_URL: str = _SDK_CFG.get(
+    "openjdk_17_url",
+    "https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse",
 )
 
-# Required SDK packages for Android 16 (API 36) + Google Drivers
-REQUIRED_PACKAGES = (
-    "emulator",
-    "platform-tools",
-    "system-images/android-36/google_apis/x86_64",
-    "extras/google/usb_driver",
-    "extras/google/Android_Emulator_Hypervisor_Driver",
+# Required SDK packages from config.json
+REQUIRED_PACKAGES: tuple[str, ...] = tuple(
+    _SDK_CFG.get(
+        "required_packages",
+        (
+            "emulator",
+            "platform-tools",
+            "system-images/android-36/google_apis/x86_64",
+            "extras/google/usb_driver",
+            "extras/google/Android_Emulator_Hypervisor_Driver",
+        ),
+    )
 )
 
 
@@ -631,7 +645,7 @@ def create_avd(
             encoding="utf-8",
         )
 
-    # Ensure config.ini has Google Play Store enabled
+    # Ensure config.ini has Google Play Store enabled and sensors configured from config.json
     cfg_file = avd_folder / "config.ini"
     if cfg_file.exists():
         cfg_lines = cfg_file.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -640,9 +654,9 @@ def create_avd(
             if "=" in line:
                 k, v = line.split("=", 1)
                 cfg_dict[k.strip()] = v.strip()
-        cfg_dict["PlayStore.enabled"] = "yes"
-        cfg_dict["hw.battery"] = "yes"
-        cfg_dict["hw.gps"] = "yes"
+        sensor_defaults = _CONFIG.get("hardening", {}).get("hardware_sensors", {})
+        for sk, sv in sensor_defaults.items():
+            cfg_dict[sk] = sv
         cfg_file.write_text("\n".join(f"{k}={v}" for k, v in cfg_dict.items()) + "\n", encoding="utf-8")
 
 

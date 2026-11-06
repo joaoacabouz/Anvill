@@ -67,6 +67,11 @@ def _ensure_dependencies() -> None:
 
 _ensure_dependencies()
 
+from config import load_config
+
+CONFIG_DATA = load_config()
+CONFIG_VM = CONFIG_DATA.get("vm", {})
+
 from setup_sdk import (  # noqa: E402
     DEFAULT_AVD_NAME,
     DEFAULT_AVD_ROOT,
@@ -676,7 +681,10 @@ class LaunchFlags:
 
     def build_scrcpy_args(self) -> Sequence[str]:
         """Builds scrcpy arguments after boot."""
-        return ["scrcpy", "--max-fps=120", "--video-bit-rate=16M"]
+        scrcpy_cfg = CONFIG_VM.get("scrcpy", {})
+        fps = scrcpy_cfg.get("max_fps", 120)
+        bitrate = scrcpy_cfg.get("video_bit_rate", "16M")
+        return ["scrcpy", f"--max-fps={fps}", f"--video-bit-rate={bitrate}"]
 
 
 def pick_gpu_mode(host: HostInspector, safe_gpu: bool) -> str:
@@ -1027,6 +1035,14 @@ def interactive_menu(hardware: Dict[str, Any], spoof: Dict[str, Any]) -> Tuple[s
 # CLI Argument Parser
 # ---------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
+    cfg = load_config()
+    cfg_vm = cfg.get("vm", {})
+    cfg_debloat = cfg.get("debloat", {})
+
+    default_avd = cfg_vm.get("avd_name", DEFAULT_AVD_NAME)
+    default_sp = cfg_vm.get("default_spoof_profile", "s23_ultra")
+    default_hw = cfg_vm.get("default_hardware_profile", "auto")
+
     parser = argparse.ArgumentParser(
         prog="android_vm.py",
         description="Modular, portable Android 16 (API 36) emulator provisioner & launcher.",
@@ -1035,23 +1051,53 @@ def build_parser() -> argparse.ArgumentParser:
         "--profile",
         default=None,
         choices=list(load_profiles()["hardware_profiles"].keys()),
-        help="Hardware profile ('auto' or a fixed profile name).",
+        help=f"Hardware profile ('auto' or a fixed profile name, default: {default_hw}).",
     )
     parser.add_argument(
         "--spoof",
         default=None,
         choices=list(load_profiles()["spoof_profiles"].keys()),
-        help="Device spoofing profile (e.g. s23_ultra, rog_phone_7, stock).",
+        help=f"Device spoofing profile (e.g. s23_ultra, rog_phone_7, stock, default: {default_sp}).",
     )
-    parser.add_argument("--avd", default=DEFAULT_AVD_NAME, help=f"AVD name (default: {DEFAULT_AVD_NAME}).")
-    parser.add_argument("--scrcpy", action="store_true", help="Launch scrcpy automatically after device boot.")
-    parser.add_argument("--safe-gpu", action="store_true", help="Force safe GPU mode.")
-    parser.add_argument("--writable-system", action="store_true", help="Make system partition writable.")
-    parser.add_argument("--no-boot-anim", action="store_true", help="Disable boot animation.")
-    parser.add_argument("--cold-boot", action="store_true", help="Force cold boot (disable snapshots).")
+    parser.add_argument("--avd", default=default_avd, help=f"AVD name (default: {default_avd}).")
+    parser.add_argument(
+        "--scrcpy",
+        action="store_true",
+        default=cfg_vm.get("scrcpy", {}).get("enabled", False),
+        help="Launch scrcpy automatically after device boot.",
+    )
+    parser.add_argument(
+        "--safe-gpu",
+        action="store_true",
+        default=cfg_vm.get("safe_gpu", False),
+        help="Force safe GPU mode.",
+    )
+    parser.add_argument(
+        "--writable-system",
+        action="store_true",
+        default=cfg_vm.get("writable_system", False),
+        help="Make system partition writable.",
+    )
+    parser.add_argument(
+        "--no-boot-anim",
+        action="store_true",
+        default=cfg_vm.get("no_boot_anim", False),
+        help="Disable boot animation.",
+    )
+    parser.add_argument(
+        "--cold-boot",
+        action="store_true",
+        default=cfg_vm.get("cold_boot", False),
+        help="Force cold boot (disable snapshots).",
+    )
     parser.add_argument("--wipe-data", action="store_true", help="Reset user data to default state.")
     parser.add_argument("--persist-spoof", action="store_true", help="Persist spoof properties via adb remount.")
-    parser.add_argument("--debloat", action="store_true", help="Debloat Android VM after boot (removes non-essential apps).")
+    parser.add_argument(
+        "--debloat",
+        action="store_true",
+        default=cfg_debloat.get("enabled_by_default", False),
+        help="Debloat Android VM after boot (removes non-essential apps).",
+    )
     parser.add_argument("--root-magisk", action="store_true", help="Patch AVD ramdisk with Magisk root and exit.")
     parser.add_argument("--restore-root", action="store_true", help="Restore stock unrooted ramdisk and exit.")
     parser.add_argument("--system", type=Path, default=None, help="Path to a custom/modified system.img.")
@@ -1208,7 +1254,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     else:
         p_name = args.profile
-        s_name = args.spoof or "stock"
+        s_name = args.spoof or CONFIG_VM.get("default_spoof_profile", "stock")
 
     profiles_data = load_profiles()
     profile = get_hardware_profile(profiles_data, p_name, inspector=inspector)

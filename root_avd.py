@@ -57,100 +57,25 @@ def _print(msg: str) -> None:
 
 REPO_ROOT = Path(__file__).resolve().parent
 SDK_ROOT = REPO_ROOT / "android-sdk"
+from config import get_bloatware_packages, get_protected_packages, load_config
+
+# ---------------------------------------------------------------------------
+# Portable Directory Paths (dp0 - Repo-Local) & Configurations
+# ---------------------------------------------------------------------------
+REPO_ROOT: Path = Path(__file__).resolve().parent
+SDK_ROOT = REPO_ROOT / "android-sdk"
 AVD_ROOT = REPO_ROOT / "avds"
 USER_HOME = REPO_ROOT / ".android"
 TOOLS_ROOT = REPO_ROOT / "tools"
 ROOTAVD_DIR = TOOLS_ROOT / "rootAVD"
-DEFAULT_AVD_NAME = "Android16_Pro"
+
+CONFIG = load_config()
+DEFAULT_AVD_NAME = CONFIG.get("vm", {}).get("avd_name", "Android16_Pro")
 DEFAULT_RAMDISK_REL = Path("system-images") / "android-36" / "google_apis" / "x86_64" / "ramdisk.img"
 
-# ---------------------------------------------------------------------------
-# Debloat Definitions (Preserves Google Play Store & Essential Services)
-# ---------------------------------------------------------------------------
-BLOATWARE_PACKAGES = [
-    # Non-essential Google pre-installed services and apps
-    "com.google.android.googlequicksearchbox",  # Google Search App / Velvet
-    "com.google.android.apps.maps",             # Google Maps
-    "com.google.android.youtube",               # YouTube
-    "com.google.android.apps.youtube.music",    # YouTube Music
-    "com.google.android.apps.photos",           # Google Photos
-    "com.google.android.apps.photosgo",         # Photos Go
-    "com.google.android.apps.docs",             # Google Drive / Docs
-    "com.google.android.apps.tachyon",          # Google Meet / Duo
-    "com.google.android.apps.books",            # Google Play Books
-    "com.google.android.apps.magazines",        # Google News
-    "com.google.android.videos",                # Google TV / Play Movies
-    "com.google.android.music",                 # Google Play Music
-    "com.google.android.calendar",              # Google Calendar
-    "com.google.android.contacts",              # Google Contacts
-    "com.google.android.deskclock",             # Google Clock
-    "com.google.android.calculator",            # Google Calculator
-    "com.google.android.tts",                   # Google Text-to-Speech
-    "com.google.android.marvin.talkback",       # TalkBack Accessibility
-    "com.google.android.feedback",              # Google Feedback bug reporter
-    "com.google.android.printservice.recommendation",  # Print Recommendation
-    "com.google.android.wallpaper",             # Google Wallpapers
-    "com.google.android.wallpaper.effects",     # Wallpaper Effects
-    "com.google.android.setupwizard",           # Setup Wizard
-    "com.google.android.onetimeinitializer",    # Initializer
-
-    # AOSP / Emulator dummy & telemetry packages
-    "com.android.music",                        # AOSP Music
-    "com.android.gallery3d",                    # AOSP Gallery
-    "com.android.quicksearchbox",               # AOSP Search
-    "com.android.email",                        # AOSP Email
-    "com.android.calendar",                     # AOSP Calendar
-    "com.android.camera2",                      # AOSP Camera
-    "com.android.deskclock",                    # AOSP Clock
-    "com.android.calculator2",                  # AOSP Calculator
-    "com.android.traceur",                      # System Tracing
-    "com.android.printspooler",                 # Print Spooler
-    "com.android.bsp.telephony",                # Telephony BSP stub
-    "com.android.bookmarkprovider",             # Browser Bookmarks
-    "com.android.wallpaper.livepicker",         # Live Wallpapers
-    "com.android.wallpaperbackup",              # Wallpaper Backup
-    "com.android.dreams.basic",                 # Screensaver
-    "com.android.dreams.phototable",            # Photo Table
-    "com.android.companiondevicemanager",       # Companion Device Manager
-    "com.android.emergency",                    # Emergency Info
-    "com.android.cellbroadcastreceiver",        # Cell Broadcasts
-    "com.android.stk",                          # SIM Toolkit
-    "com.android.samplefilter",                 # Sample Filter
-    "com.example.android.apis",                 # API Demos
-    "com.android.development",                  # Dev Tools
-    "com.android.development_settings",         # Dev Settings
-    "com.android.fallback",                     # Fallback
-    "com.android.smspush",                      # WAP Push
-    "com.android.calllogbackup",                # Call Log Backup
-    "com.android.sharedstoragebackup",          # Storage Backup
-]
-
-PROTECTED_PACKAGES = {
-    "com.android.vending",                      # Google Play Store (ESSENTIAL)
-    "com.google.android.gms",                   # Google Play Services (ESSENTIAL)
-    "com.google.android.gsf",                   # Google Services Framework (ESSENTIAL)
-    "com.google.android.ext.services",          # GMS Extension Services
-    "com.google.android.ext.shared",            # GMS Shared Lib
-    "com.android.systemui",                     # System UI (Status bar, nav bar)
-    "com.android.settings",                     # Settings app
-    "com.android.providers.settings",           # Settings Provider
-    "com.android.providers.media",              # Media Provider
-    "com.android.providers.downloads",          # Download Manager
-    "com.android.providers.downloads.ui",       # Downloads UI
-    "com.android.packageinstaller",             # Package Installer
-    "com.google.android.packageinstaller",      # Google Package Installer
-    "com.android.permissioncontroller",         # Permission Controller
-    "com.google.android.permissioncontroller",  # Google Permission Controller
-    "com.android.webview",                      # WebView
-    "com.google.android.webview",               # Google WebView
-    "com.android.inputmethod.latin",            # Keyboard
-    "com.google.android.inputmethod.latin",     # Gboard
-    "com.android.launcher3",                    # Launcher
-    "com.google.android.apps.nexuslauncher",    # Nexus Launcher
-    "com.android.shell",                        # ADB Shell
-    "android",                                  # Android Core Framework
-    "com.topjohnwu.magisk",                     # Magisk Root Manager
-}
+# Debloat definitions loaded dynamically from config.json
+BLOATWARE_PACKAGES = get_bloatware_packages(CONFIG)
+PROTECTED_PACKAGES = get_protected_packages(CONFIG)
 
 
 def debloat_android(adb_bin: Path, env: dict[str, str]) -> int:
@@ -231,8 +156,11 @@ def debloat_android(adb_bin: Path, env: dict[str, str]) -> int:
     return removed
 
 
-def build_anti_detection_script(props: dict[str, str]) -> str:
+def build_anti_detection_script(props: dict[str, str], config: dict[str, Any] | None = None) -> str:
     """Builds a portable POSIX shell script to be executed by Magisk at early/late boot."""
+    cfg = config or load_config()
+    hardening = cfg.get("hardening", {})
+
     lines = [
         "#!/system/bin/sh",
         "# ==============================================================================",
@@ -253,21 +181,18 @@ def build_anti_detection_script(props: dict[str, str]) -> str:
         "}",
         "",
         "# 1. Delete QEMU / Emulator Indicators",
-        "del_prop ro.kernel.qemu",
-        "del_prop ro.boot.qemu",
-        "del_prop init.svc.qemud",
-        "del_prop init.svc.goldfish-logcat",
-        "del_prop init.svc.ranchu-setup",
-        "del_prop init.svc.ranchu-net",
-        "del_prop ro.hardware.virtual_device",
-        "del_prop ro.boot.hardware.sku",
-        "del_prop ro.emulator.circular",
+    ]
+
+    for qprop in hardening.get("qemu_props_to_delete", []):
+        lines.append(f"del_prop {qprop}")
+
+    lines.extend([
         "set_prop ro.kernel.qemu 0",
         "set_prop ro.boot.qemu 0",
         "set_prop ro.hardware.virtual_device \"\"",
         "",
         "# 2. Real Hardware & Security Properties",
-    ]
+    ])
 
     for k, v in props.items():
         if k in ("ro.kernel.qemu", "ro.boot.qemu"):
@@ -277,42 +202,21 @@ def build_anti_detection_script(props: dict[str, str]) -> str:
     lines.extend([
         "",
         "# 3. Anti-Detection for Android Settings Inspection",
-        "settings put global adb_enabled 0 2>/dev/null",
-        "settings put global development_settings_enabled 0 2>/dev/null",
-        "settings put secure mock_location 0 2>/dev/null",
-        "settings put global package_verifier_user_consent 1 2>/dev/null",
-        "settings put global install_non_market_apps 1 2>/dev/null",
-        "",
-        "# 4. Magisk DenyList (Protects Play Store & Banking apps from root detection)",
-        "if command -v magisk >/dev/null 2>&1; then",
-        "    magisk --denylist enable 2>/dev/null",
-        "    magisk --denylist add com.google.android.gms com.google.android.gms.unstable 2>/dev/null",
-        "    magisk --denylist add com.google.android.vending 2>/dev/null",
-        "fi",
-        "",
     ])
-
-    return "\n".join(lines) + "\n"
-
-    for k, v in props.items():
-        if k in ("ro.kernel.qemu", "ro.boot.qemu"):
-            continue
-        lines.append(f'set_prop {k} "{v}"')
+    settings_overrides = hardening.get("settings_overrides", {})
+    for namespace, kv in settings_overrides.items():
+        for skey, sval in kv.items():
+            lines.append(f"settings put {namespace} {skey} {sval} 2>/dev/null")
 
     lines.extend([
         "",
-        "# 3. Anti-Detection for Android Settings Inspection",
-        "settings put global adb_enabled 0 2>/dev/null",
-        "settings put global development_settings_enabled 0 2>/dev/null",
-        "settings put secure mock_location 0 2>/dev/null",
-        "settings put global package_verifier_user_consent 1 2>/dev/null",
-        "settings put global install_non_market_apps 1 2>/dev/null",
-        "",
         "# 4. Magisk DenyList (Protects Play Store & Banking apps from root detection)",
         "if command -v magisk >/dev/null 2>&1; then",
         "    magisk --denylist enable 2>/dev/null",
-        "    magisk --denylist add com.google.android.gms com.google.android.gms.unstable 2>/dev/null",
-        "    magisk --denylist add com.google.android.vending 2>/dev/null",
+    ])
+    for denylist_pkg in hardening.get("magisk_denylist_packages", []):
+        lines.append(f"    magisk --denylist add {denylist_pkg} 2>/dev/null")
+    lines.extend([
         "fi",
         "",
     ])
@@ -320,11 +224,19 @@ def build_anti_detection_script(props: dict[str, str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def harden_avd_config(avd_root: Path, avd_name: str, props: dict[str, str]) -> None:
+def harden_avd_config(
+    avd_root: Path,
+    avd_name: str,
+    props: dict[str, str],
+    config: dict[str, Any] | None = None,
+) -> None:
     """Updates the AVD config.ini to enable hardware sensors, camera, and device manufacturer."""
     config_file = avd_root / f"{avd_name}.avd" / "config.ini"
     if not config_file.exists():
         return
+
+    cfg_dict = config or load_config()
+    sensor_defaults = cfg_dict.get("hardening", {}).get("hardware_sensors", {})
 
     content = config_file.read_text(encoding="utf-8", errors="replace")
     cfg = {}
@@ -333,21 +245,11 @@ def harden_avd_config(avd_root: Path, avd_name: str, props: dict[str, str]) -> N
             k, v = line.split("=", 1)
             cfg[k.strip()] = v.strip()
 
-    # Hardware & Real device flags
-    cfg["PlayStore.enabled"] = "yes"
-    cfg["hw.battery"] = "yes"
-    cfg["hw.camera.back"] = "virtualscene"
-    cfg["hw.camera.front"] = "emulated"
-    cfg["hw.gps"] = "yes"
-    cfg["hw.sensors.orientation"] = "yes"
-    cfg["hw.sensors.proximity"] = "yes"
-    cfg["hw.sensors.light"] = "yes"
-    cfg["hw.sensors.magnetic_field"] = "yes"
-    cfg["hw.sensors.pressure"] = "yes"
-    cfg["hw.sensors.humidity"] = "yes"
-    cfg["hw.sensors.temperature"] = "yes"
-    cfg["hw.accelerometer"] = "yes"
-    cfg["hw.gyroscope"] = "yes"
+    # Apply all sensor & hardware defaults from config.json
+    for k, v in sensor_defaults.items():
+        cfg[k] = v
+
+    # Device brand & model from spoofing profile
     cfg["hw.device.manufacturer"] = props.get("ro.product.manufacturer", "samsung")
     cfg["hw.device.name"] = props.get("ro.product.model", "SM-S918B")
 

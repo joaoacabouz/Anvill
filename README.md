@@ -63,8 +63,10 @@ Anvill/
 ├── tools/                        # Helper utilities (rootAVD for Magisk patching)
 ├── android_vm.py                 # Main CLI orchestrator & Interactive TUI
 ├── setup_sdk.py                  # Standalone portable SDK & AVD bootstrap
-├── root_avd.py                   # Automated Magisk ramdisk patcher & root tool
-├── profiles.json                 # Hardware and Device Spoofing profiles
+├── root_avd.py                   # Automated Magisk root, debloat & hardening provisioner
+├── config.py                     # Central configuration loader
+├── config.json                   # General runtime, debloat, hardening & SDK settings
+├── profiles.json                 # Hardware and Device Spoofing profiles (device specs)
 ├── requirements.txt              # Minimal Python dependencies (psutil, rich)
 ├── test_android_vm.py            # Comprehensive test suite (100% passing)
 ├── run.bat                       # Quick launcher (calls python android_vm.py)
