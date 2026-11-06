@@ -22,7 +22,7 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 
 sys.argv = ["test"]
 import android_vm as vm  # noqa: E402
-from setup_sdk import get_portable_env, whpx_is_active  # noqa: E402
+from setup_sdk import _exec_cmd, accept_all_licenses, get_portable_env, whpx_is_active  # noqa: E402
 
 
 def capture(fn):
@@ -247,6 +247,24 @@ def test_portable_env():
     print("✓ get_portable_env configures isolated repo-local paths")
 
 
+def test_exec_cmd_quoting():
+    bat_path = Path("fake_tool.bat")
+    cmd = _exec_cmd(bat_path, "create", "avd", "-k", "system-images;android-36;google_apis;x86_64")
+    assert any('"system-images;android-36;google_apis;x86_64"' in arg for arg in cmd)
+    print("✓ _exec_cmd properly quotes arguments with semicolons for Windows cmd.exe")
+
+
+def test_accept_all_licenses_prepopulation():
+    with tempfile.TemporaryDirectory() as td:
+        sdk = Path(td)
+        accept_all_licenses(sdk, env={})
+        lic_file = sdk / "licenses" / "android-sdk-license"
+        assert lic_file.exists()
+        content = lic_file.read_text(encoding="utf-8")
+        assert "24333f8a63b6825ea9c5514f83c2829b004d1fee" in content
+    print("✓ accept_all_licenses pre-populates official license hashes")
+
+
 if __name__ == "__main__":
     test_profiles_json_load()
     test_hardware_profiles_resolution()
@@ -261,4 +279,6 @@ if __name__ == "__main__":
     test_adb_spoof_apply()
     test_whpx_check_exists()
     test_portable_env()
+    test_exec_cmd_quoting()
+    test_accept_all_licenses_prepopulation()
     print("\n✅ All tests passed successfully!")

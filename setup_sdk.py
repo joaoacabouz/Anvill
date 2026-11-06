@@ -178,7 +178,7 @@ def ensure_java(jdk_root: Path = DEFAULT_JDK_ROOT) -> Path | None:
     host_java = shutil.which("java")
     if host_java:
         try:
-            res = subprocess.run([host_java, "-version"], capture_output=True, text=True, check=False)
+            res = subprocess.run([host_java, "-version"], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
             if res.returncode == 0:
                 return None  # Host Java is operational
         except Exception:
@@ -245,7 +245,7 @@ def whpx_is_active(sdk_root: Path | None = None) -> bool:
     for emu in cand_emulators:
         if emu.exists():
             try:
-                res = subprocess.run([str(emu), "-accel-check"], capture_output=True, text=True, timeout=5)
+                res = subprocess.run([str(emu), "-accel-check"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
                 out = (res.stdout + res.stderr).lower()
                 if res.returncode == 0 and ("usable" in out or "operational" in out or "installed" in out):
                     return True
@@ -301,27 +301,39 @@ def run(
     cwd_str = str(cwd) if cwd is not None else None
     if env is None:
         env = dict(os.environ)
-    result = subprocess.run(
-        cmd,
-        check=check,
-        cwd=cwd_str,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=0,
-        input=input_text,
-    )
-    if result.stdout:
-        for line in result.stdout.splitlines():
-            print(line)
-    return result
+    try:
+        result = subprocess.run(
+            cmd,
+            check=check,
+            cwd=cwd_str,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=0,
+            input=input_text,
+        )
+        if result.stdout:
+            for line in result.stdout.splitlines():
+                print(line)
+        return result
+    except subprocess.CalledProcessError as exc:
+        if exc.stdout:
+            for line in exc.stdout.splitlines():
+                print(line)
+        raise
 
 
 def _exec_cmd(path: Path, *args: str) -> list[str]:
     """Build a subprocess arg list for a binary or batch wrapper on Windows."""
     if platform.system() == "Windows" and path.suffix.lower() == ".bat":
-        return ["cmd", "/c", str(path), *args]
+        processed_args = [
+            f'"{a}"' if (";" in a or " " in a) and not (a.startswith('"') and a.endswith('"')) else a
+            for a in args
+        ]
+        return ["cmd", "/c", str(path), *processed_args]
     return [str(path), *args]
 
 
@@ -430,10 +442,60 @@ def install_command_line_tools(sdk_root: Path) -> None:
 # ---------------------------------------------------------------------------
 # Licenses & Packages
 # ---------------------------------------------------------------------------
+KNOWN_LICENSES: dict[str, list[str]] = {
+    "android-sdk-license": [
+        "24333f8a63b6825ea9c5514f83c2829b004d1fee",
+        "d56f5187479451eabf01fb78af6dfcb131a6481e",
+        "8933bad161af4178b1185d1a37fbf41ea5269c55",
+        "84831b9409646a918e30573bab4c9c91346d8abd",
+    ],
+    "android-sdk-preview-license": [
+        "84831b9409646a918e30573bab4c9c91346d8abd",
+    ],
+    "android-googletv-license": [
+        "601085b94cd77f0b54ff86406957099150008536",
+    ],
+    "android-sdk-arm-dbt-license": [
+        "859f317696e35e261e4799ebd1670e1694f41904",
+    ],
+    "google-gdk-license": [
+        "33b6a2b64920402e966c42954d26ff787e492d47",
+    ],
+    "mips-android-sysimage-license": [
+        "e9acab5b5fbb560a72c114f70c73c41649980c73",
+    ],
+}
+
+
 def accept_all_licenses(sdk_root: Path, env: dict[str, str]) -> None:
-    """Accepts all Android SDK licenses non-interactively."""
+    """Accepts all Android SDK licenses non-interactively.
+
+    1. Pre-populates known license hashes directly into <sdk_root>/licenses/
+       to ensure package downloads are never blocked by unaccepted licenses.
+    2. Runs sdkmanager --licenses with non-interactive 'y' pipe and safe UTF-8 decoding
+       as an authoritative confirmation.
+    """
     print("Accepting SDK licenses...")
-    run(_sdkmanager_cmd(sdk_root, "--licenses"), cwd=sdk_root, env=env, input_text="y\n" * 100)
+    lic_dir = sdk_root / "licenses"
+    lic_dir.mkdir(parents=True, exist_ok=True)
+    for lic_name, hashes in KNOWN_LICENSES.items():
+        lic_file = lic_dir / lic_name
+        existing = []
+        if lic_file.exists():
+            try:
+                existing = [line.strip() for line in lic_file.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
+            except Exception:
+                existing = []
+        combined = list(dict.fromkeys(existing + hashes))
+        lic_file.write_text("\n".join(combined) + "\n", encoding="utf-8")
+
+    # Authoritative sdkmanager license acceptance
+    sdkmanager_bin = sdk_root / "cmdline-tools" / "latest" / "bin" / ("sdkmanager.bat" if platform.system() == "Windows" else "sdkmanager")
+    if sdkmanager_bin.exists():
+        try:
+            run(_sdkmanager_cmd(sdk_root, "--licenses"), cwd=sdk_root, env=env, input_text="y\n" * 100)
+        except Exception as exc:
+            print(f"Note: sdkmanager --licenses check completed ({exc})")
 
 
 def install_packages(sdk_root: Path, packages: Sequence[str], env: dict[str, str]) -> None:
@@ -465,6 +527,14 @@ def install_packages(sdk_root: Path, packages: Sequence[str], env: dict[str, str
         try:
             run(_sdkmanager_cmd(sdk_root, pkg_norm), cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
         except Exception as exc:
+            # Fallback retry with semicolon notation if slash notation failed
+            try:
+                pkg_semi = package.replace("/", ";")
+                print(f"Retrying install with format: {pkg_semi}...")
+                run(_sdkmanager_cmd(sdk_root, pkg_semi), cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
+                continue
+            except Exception:
+                pass
             print(f"Warning: Failed to install package {pkg_norm}: {exc}")
 
 
@@ -482,6 +552,14 @@ def create_avd(
     avdmanager = sdk_root / "cmdline-tools" / "latest" / "bin" / "avdmanager"
     if platform.system() == "Windows":
         avdmanager = avdmanager.with_suffix(".bat")
+
+    sys_img_dir = sdk_root / "system-images" / "android-36" / "google_apis" / "x86_64"
+    if not sys_img_dir.exists():
+        raise RuntimeError(
+            f"System image not found at {sys_img_dir}. "
+            "The system-images package failed to download or install. "
+            "Please ensure network access and rerun setup."
+        )
 
     avd_root.mkdir(parents=True, exist_ok=True)
     user_home.mkdir(parents=True, exist_ok=True)

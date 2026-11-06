@@ -89,6 +89,8 @@ def ensure_rootavd_tool(target_dir: Path) -> bool:
             ["git", "clone", "--depth", "1", "https://github.com/newbit1/rootAVD.git", str(target_dir)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         if res.returncode != 0:
@@ -107,6 +109,8 @@ def is_emulator_running(adb_bin: Path, env: dict[str, str]) -> bool:
             [str(adb_bin), "-e", "get-state"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             env=env,
             check=False,
@@ -125,6 +129,8 @@ def wait_for_boot(adb_bin: Path, env: dict[str, str], timeout: int = 120) -> boo
                 [str(adb_bin), "-e", "shell", "getprop", "sys.boot_completed"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
                 env=env,
                 check=False,
@@ -212,6 +218,8 @@ def root_avd(
             env=env,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
 
@@ -239,7 +247,7 @@ def root_avd(
                 emu_proc.wait(timeout=8)
             except Exception:
                 emu_proc.kill()
-            subprocess.run([str(adb_bin), "-e", "emu", "kill"], capture_output=True, env=env, check=False)
+            subprocess.run([str(adb_bin), "-e", "emu", "kill"], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, check=False)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
