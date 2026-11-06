@@ -254,7 +254,7 @@ class PlayerView(QWidget):
         self.adb = AdbManager()
         self.boot_worker: Optional[EmulatorBootWorker] = None
         self.embedded_hwnd: Optional[int] = None
-        self.is_landscape: bool = False
+        self.is_landscape: bool = True
         self._embed_timer: Optional[QTimer] = None
         self._detect_timer: Optional[QTimer] = None
         self._sync_timer: Optional[QTimer] = None
@@ -356,8 +356,8 @@ class PlayerView(QWidget):
         row2_lbl = QLabel("Device Spoofing:")
         row2_lbl.setStyleSheet("font-weight: 600;")
         self.spoof_combo = QComboBox()
-        self.spoof_combo.addItems(["s23_ultra", "rog_phone_7", "stock"])
-        self.spoof_combo.setCurrentText("s23_ultra")
+        self.spoof_combo.addItems(["galaxy_tab_s9", "s23_ultra", "rog_phone_7", "stock"])
+        self.spoof_combo.setCurrentText("galaxy_tab_s9")
         row2.addWidget(row2_lbl)
         row2.addWidget(self.spoof_combo, stretch=1)
         opts_box.addLayout(row2)
@@ -585,21 +585,21 @@ class PlayerView(QWidget):
                 self._sync_timer.start()
 
     def _sync_geometry(self) -> None:
-        """Calculates centered aspect-ratio geometry and positions the Android display inside the viewport."""
+        """Calculates centered aspect-ratio geometry and positions the Android tablet display inside the viewport."""
         if not user32 or not self.embedded_hwnd:
             return
 
         vp_w = max(100, self.viewport_frame.width())
         vp_h = max(100, self.viewport_frame.height())
 
-        # Aspect ratio: phone is 720/1600 (0.45) in portrait; inverse in landscape
-        ratio = (1600.0 / 720.0) if self.is_landscape else (720.0 / 1600.0)
+        # Tablet 16:9 landscape aspect ratio (horizontal)
+        ratio = (16.0 / 9.0) if self.is_landscape else (9.0 / 16.0)
 
-        target_h = max(100, vp_h - 16)
-        target_w = int(target_h * ratio)
-        if target_w > vp_w - 16:
-            target_w = max(100, vp_w - 16)
-            target_h = int(target_w / ratio)
+        target_w = max(100, vp_w - 12)
+        target_h = int(target_w / ratio)
+        if target_h > vp_h - 12:
+            target_h = max(100, vp_h - 12)
+            target_w = int(target_h * ratio)
 
         offset_x = (vp_w - target_w) // 2
         offset_y = (vp_h - target_h) // 2
@@ -670,9 +670,9 @@ class PlayerView(QWidget):
         self.adb.run("shell", "input", "keyevent", "25")
 
     def _on_rotate(self) -> None:
-        # Toggle orientation state
+        # Toggle orientation state (0 = natural tablet landscape, 1 = 90deg portrait)
         self.is_landscape = not self.is_landscape
-        rot_val = "1" if self.is_landscape else "0"
+        rot_val = "0" if self.is_landscape else "1"
         self.adb.run("shell", "settings", "put", "system", "accelerometer_rotation", "0")
         self.adb.run("shell", "settings", "put", "system", "user_rotation", rot_val)
         # Recenter geometry

@@ -111,9 +111,9 @@ def resolve_auto_profile(
         ram_mb=ram_mb,
         heap_mb=heap_mb,
         cpu_cores=cpu_cores,
-        width=1080,
-        height=2400,
-        dpi=420,
+        width=1920,
+        height=1080,
+        dpi=280,
         fps=60,
         disk_gb=32,
     )

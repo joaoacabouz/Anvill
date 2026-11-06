@@ -72,6 +72,9 @@ class AvdConfig:
         self["fastboot.forceColdBoot"] = "no"
         self["showDeviceFrame"] = "no"
         self["skin.dynamic"] = "yes"
+        self["hw.initialOrientation"] = "landscape"
+        self["skin.name"] = f"{profile.width}x{profile.height}"
+        self["skin.path"] = f"{profile.width}x{profile.height}"
 
     def atomic_write(self) -> None:
         """Writes the file atomically (UTF-8, no BOM)."""

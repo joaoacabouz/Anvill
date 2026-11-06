@@ -3,7 +3,7 @@
     "avd_name": "Android16_Pro",
     "auto_root_on_setup": true,
     "default_hardware_profile": "auto",
-    "default_spoof_profile": "s23_ultra",
+    "default_spoof_profile": "galaxy_tab_s9",
     "default_gpu_mode": "auto",
     "cold_boot": false,
     "safe_gpu": false,
