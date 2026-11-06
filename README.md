@@ -57,8 +57,18 @@ All Python source code is cleanly isolated inside `src/`. Only convenient Window
 ```text
 Anvill/
 ├── src/                          # All core Python source code
+│   ├── gui/                      # PySide6 Modern Dark Mode GUI & Emulator Player
+│   │   ├── app.py                # Main Frameless window & view orchestrator
+│   │   ├── player.py             # Emulator player container & Win32 embedding
+│   │   ├── settings_dialog.py    # Preferences modal (themes, hardware & spoofing)
+│   │   ├── setup_wizard.py       # First-time visual setup experience (QThread)
+│   │   ├── splash.py             # Loading / verification screen
+│   │   ├── theme.py              # 6 Dark mode color themes & QSS generator
+│   │   ├── titlebar.py           # Custom draggable frameless titlebar
+│   │   └── __init__.py
 │   ├── adb.py                    # ADB automation, boot polling & property injection
 │   ├── android_vm.py             # Main CLI launcher & Interactive TUI
+│   ├── app_gui.py                # GUI Application entry point
 │   ├── config.py                 # Configuration loader & dynamic target image parser
 │   ├── configurator.py           # AVD config.ini parser, atomic writer & path healer
 │   ├── constants.py              # Repository paths, directory defaults & constants
@@ -82,12 +92,13 @@ Anvill/
 ├── .android/                     # Isolated Android user configuration & ADB keys
 ├── jdk/                          # Portable OpenJDK 17 (auto-downloaded if host lacks Java)
 ├── tools/                        # Helper utilities (rootAVD for Magisk patching)
-├── TestSuit/                     # Granular, comprehensive test suite
+├── testsuit/                     # Granular, comprehensive test suite (59 unit tests)
 │   ├── run_tests.py              # Suite test runner with rich execution reporting
 │   ├── test_adb.py               # ADB synchronization, wait-for-device & spoof injection
 │   ├── test_config.py            # config.json validation & version-agnostic image parsing
 │   ├── test_configurator.py      # config.ini parsing, hardware updates & self-healing paths
 │   ├── test_debloat_and_hardening.py # Debloat package isolation & anti-detection verification
+│   ├── test_gui.py               # PySide6 themes, titlebar, splash & settings tests
 │   ├── test_launcher.py          # Emulator args synthesis, GPU mode selection & Scrcpy
 │   ├── test_profiles.py          # profiles.json hardware profiles & device spoofing
 │   ├── test_provisioner.py       # SDK package installation, direct Java & target AVD creation
@@ -95,12 +106,15 @@ Anvill/
 │   ├── test_ui_and_inspector.py  # Host hardware inspection, RAM metrics & Rich UI
 │   ├── test_anvill.py            # Modular unit tests
 │   └── test_android_vm.py        # Integration & backward compatibility tests
-├── run.bat                       # Quick launcher (calls python src\android_vm.py)
-├── setup.bat                     # Quick installer (calls python src\setup_sdk.py -y)
-├── root.bat                      # Standalone root patcher (calls python src\root_avd.py)
+├── app.bat                       # Launch Modern GUI Player (python src\app_gui.py)
+├── run.bat                       # CLI interactive launcher (python src\android_vm.py)
+├── setup.bat                     # Quick installer (python src\setup_sdk.py -y)
+├── root.bat                      # Standalone root patcher (python src\root_avd.py)
+├── build.bat                     # Nuitka + Clang standalone build dispatcher
+├── build_exe.py                  # Standalone compilation orchestrator
 ├── config.json                   # General runtime, debloat, hardening & SDK settings
 ├── profiles.json                 # Hardware and Device Spoofing profiles (device specs)
-├── requirements.txt              # Minimal Python dependencies (psutil, rich)
+├── requirements.txt              # Python dependencies (psutil, rich, pyside6)
 ├── LICENSE                       # MIT License
 └── README.md                     # Documentation
 ```
@@ -130,7 +144,7 @@ This automated step:
 5. Generates the base virtual device.
 6. **Automatically boots the VM headlessly**, waits for boot, patches **Magisk Root**, debloats non-essentials, hardens real-device identity, and closes the VM.
 
-### 2. Launching the Emulator
+### 2. Launching the Emulator (CLI / TUI)
 
 Double-click **`run.bat`** (or run from terminal):
 ```cmd
@@ -139,6 +153,54 @@ run.bat
 *(Or via Python: `python src/android_vm.py`)*
 
 The interactive menu displays detected CPU, RAM, and GPU specs, and allows you to select your performance and device spoofing profiles with numeric inputs.
+
+### 3. Launching the Modern GUI Player (PySide6)
+
+Double-click **`app.bat`** (or run from terminal):
+```cmd
+app.bat
+```
+*(Or via Python: `python src/app_gui.py`)*
+
+#### GUI Highlights:
+- **Custom Frameless Window**: Clean, modern dark window with custom draggable title bar, status badge and window controls.
+- **Multiple Color Themes**: Real-time theme switcher with 6 palettes:
+  - 🔷 **Cyber Cyan** (Default high-tech neon)
+  - 🟣 **Neon Purple** (Synthwave / Deep violet)
+  - 🟢 **Emerald Matrix** (Terminal emerald)
+  - 🟠 **Sunset Amber** (Warm amber / Cyberpunk)
+  - 🔴 **Crimson Red** (Aggressive gaming red)
+  - ⚪ **Obsidian Mono** (Clean monochrome luxury)
+- **Automated First-Run Setup**: On first launch, automatically detects unconfigured environments, runs the complete 6-stage setup pipeline on a background `QThread`, displays live progress, and streams real-time logs.
+- **Android Emulator Player**: Hooks and embeds the Google emulator window directly inside the PySide6 viewport.
+- **Full Player Controls**: Side toolbar providing quick access to:
+  - 🔊 **Volume Up / Down** (`adb input keyevent 24/25`)
+  - 🔄 **Rotate Screen** (Portrait / Landscape toggle)
+  - 📸 **Screenshot** (Captures screen via ADB into `./screenshots/`)
+  - 📱 **Power Button** (Screen lock / wake up)
+  - 🏠 **Home Button** (`adb input keyevent 3`)
+  - ◀ **Back Button** (`adb input keyevent 4`)
+  - ⏹ **Recents / Overview** (`adb input keyevent 187`)
+  - 📦 **Install APK** (File picker or Drag & Drop `.apk` directly onto the window)
+  - ⚙ **Settings Modal** (Instant hardware, spoofing and theme configuration)
+  - ✕ **Shutdown Emulator** (Clean graceful shutdown)
+
+---
+
+## 📦 Standalone Compilation (Nuitka + Clang)
+
+Anvill is engineered to compile directly into a high-performance standalone Windows binary using Nuitka and Clang:
+
+```cmd
+build.bat
+```
+*(Or via Python: `python build_exe.py`)*
+
+This runs:
+```bash
+nuitka --standalone --clang --enable-plugin=pyside6 --windows-disable-console --output-dir=dist src/app_gui.py
+```
+The output directory `dist/app_gui.dist/` contains the fully portable executable with all PySide6 plugins and data files bundled.
 
 ---
 
@@ -241,14 +303,14 @@ python src/root_avd.py --spoof-only
 
 ## 🧪 Testing
 
-Anvill includes a comprehensive test suite in `TestSuit/` covering 100% of the architecture:
+Anvill includes a comprehensive test suite in `testsuit/` covering 100% of the architecture:
 
 ```bash
 # Run the complete test suite runner with detailed summary
-python TestSuit/run_tests.py
+python testsuit/run_tests.py
 
 # Or discover tests automatically via Python's unittest module
-python -m unittest discover -s TestSuit
+python -m unittest discover -s testsuit
 ```
 
 ---

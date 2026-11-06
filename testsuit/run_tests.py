@@ -1,6 +1,6 @@
 """Anvill Test Runner.
 
-Executes all test suites in TestSuit/ and reports results.
+Executes all test suites in testsuit/ and reports results.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TEST_DIR = REPO_ROOT / "TestSuit"
+TEST_DIR = REPO_ROOT / "testsuit"
 SRC_DIR = REPO_ROOT / "src"
 
 if str(SRC_DIR) not in sys.path:
@@ -54,3 +54,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
