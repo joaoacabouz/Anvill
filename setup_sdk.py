@@ -329,11 +329,7 @@ def run(
 def _exec_cmd(path: Path, *args: str) -> list[str]:
     """Build a subprocess arg list for a binary or batch wrapper on Windows."""
     if platform.system() == "Windows" and path.suffix.lower() == ".bat":
-        processed_args = [
-            f'"{a}"' if (";" in a or " " in a) and not (a.startswith('"') and a.endswith('"')) else a
-            for a in args
-        ]
-        return ["cmd", "/c", str(path), *processed_args]
+        return ["cmd", "/c", str(path), *args]
     return [str(path), *args]
 
 
@@ -498,8 +494,21 @@ def accept_all_licenses(sdk_root: Path, env: dict[str, str]) -> None:
             print(f"Note: sdkmanager --licenses check completed ({exc})")
 
 
+def install_sdk_package(sdk_root: Path, package: str, env: dict[str, str]) -> None:
+    """Installs an SDK package using native android CLI when available, or sdkmanager."""
+    android_bin = sdk_root / "cmdline-tools" / "latest" / "bin" / ("android.exe" if platform.system() == "Windows" else "android")
+    pkg_norm = package.replace(";", "/")
+    if android_bin.exists():
+        cmd = [str(android_bin), f"--sdk={sdk_root}", "sdk", "install", pkg_norm]
+        run(cmd, cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
+        return
+
+    # Fallback to sdkmanager
+    run(_sdkmanager_cmd(sdk_root, pkg_norm), cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
+
+
 def install_packages(sdk_root: Path, packages: Sequence[str], env: dict[str, str]) -> None:
-    """Installs requested packages via sdkmanager."""
+    """Installs requested packages via android CLI or sdkmanager."""
     for package in packages:
         pkg_norm = package.replace(";", "/")
         # Check if already installed
@@ -525,17 +534,13 @@ def install_packages(sdk_root: Path, packages: Sequence[str], env: dict[str, str
 
         print(f"Installing {pkg_norm}...")
         try:
-            run(_sdkmanager_cmd(sdk_root, pkg_norm), cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
+            install_sdk_package(sdk_root, pkg_norm, env)
         except Exception as exc:
-            # Fallback retry with semicolon notation if slash notation failed
-            try:
-                pkg_semi = package.replace("/", ";")
-                print(f"Retrying install with format: {pkg_semi}...")
-                run(_sdkmanager_cmd(sdk_root, pkg_semi), cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
-                continue
-            except Exception:
-                pass
-            print(f"Warning: Failed to install package {pkg_norm}: {exc}")
+            # If optional driver fails, warn but continue
+            if "extras" in pkg_norm:
+                print(f"Notice: Optional driver {pkg_norm} skipped or not required ({exc})")
+            else:
+                print(f"Warning: Failed to install package {pkg_norm}: {exc}")
 
 
 # ---------------------------------------------------------------------------

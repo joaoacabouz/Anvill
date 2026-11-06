@@ -247,11 +247,11 @@ def test_portable_env():
     print("✓ get_portable_env configures isolated repo-local paths")
 
 
-def test_exec_cmd_quoting():
+def test_exec_cmd_structure():
     bat_path = Path("fake_tool.bat")
     cmd = _exec_cmd(bat_path, "create", "avd", "-k", "system-images;android-36;google_apis;x86_64")
-    assert any('"system-images;android-36;google_apis;x86_64"' in arg for arg in cmd)
-    print("✓ _exec_cmd properly quotes arguments with semicolons for Windows cmd.exe")
+    assert cmd[0] == "cmd" and cmd[1] == "/c" and cmd[2] == str(bat_path)
+    print("✓ _exec_cmd formats cmd /c wrapper cleanly")
 
 
 def test_accept_all_licenses_prepopulation():
@@ -279,6 +279,6 @@ if __name__ == "__main__":
     test_adb_spoof_apply()
     test_whpx_check_exists()
     test_portable_env()
-    test_exec_cmd_quoting()
+    test_exec_cmd_structure()
     test_accept_all_licenses_prepopulation()
     print("\n✅ All tests passed successfully!")
