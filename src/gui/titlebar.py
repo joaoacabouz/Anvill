@@ -85,7 +85,7 @@ class FramelessTitleBar(QWidget):
         # Theme Selector Dropdown
         self.theme_combo = QComboBox()
         self.theme_combo.setToolTip("Switch Color Theme")
-        self.theme_combo.setFixedWidth(165)
+        self.theme_combo.setFixedWidth(190)
         self.theme_combo.setFixedHeight(28)
         self.theme_combo.setIconSize(QSize(14, 14))
         for tid, tname, accent in list_themes():

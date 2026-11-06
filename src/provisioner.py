@@ -527,7 +527,7 @@ def create_avd(
         "-k", tinfo["semi"],
         "-g", tinfo["tag"],
         "-b", tinfo["abi"],
-        "--device", "pixel_7",
+        "--device", "pixel_tablet",
         "-c", "512M",
         "-p", str(avd_folder),
         "--force",

@@ -188,6 +188,36 @@ class TestGUI(unittest.TestCase):
         self.assertEqual(log_path, LOG_FILE)
         self.assertTrue(log_path.parent.exists())
 
+    def test_resolve_auto_profile_inspector_keyword(self):
+        """resolve_auto_profile handles inspector= kwarg and arbitrary kwargs without TypeError."""
+        from profiles import resolve_auto_profile, VMProfile
+        from inspector import HostInspector, HostRAM, HostCPU, HostGPU
+        insp = HostInspector(
+            ram=HostRAM(total_mb=32768, available_mb=16384),
+            cpu=HostCPU(vendor="AMD", physical_cores=8, logical_threads=16),
+            gpu=HostGPU(name="Test GPU", vendor="NVIDIA"),
+        )
+        p = resolve_auto_profile(inspector=insp, extra_flag=True)
+        self.assertIsInstance(p, VMProfile)
+        self.assertEqual(p.name, "auto")
+        self.assertEqual(p.width, 1920)
+        self.assertEqual(p.height, 1080)
+
+    def test_theme_combo_width_sufficient(self):
+        """FramelessTitleBar theme combobox has sufficient width (>= 185px) to prevent theme name clipping."""
+        parent = QWidget()
+        theme = get_theme("cyber_cyan")
+        tb = FramelessTitleBar(parent=parent, palette=theme)
+        self.assertGreaterEqual(tb.theme_combo.maximumWidth(), 185)
+
+    def test_player_view_boot_progress_and_overlay(self):
+        """PlayerView includes milestone boot progress bar in its viewport overlay."""
+        parent = QWidget()
+        theme = get_theme("cyber_cyan")
+        pv = PlayerView(parent=parent, palette=theme)
+        self.assertTrue(hasattr(pv, "boot_progress"))
+        self.assertEqual(pv.boot_progress.maximum(), 100)
+
 
 if __name__ == "__main__":
     unittest.main()

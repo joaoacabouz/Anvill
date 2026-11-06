@@ -124,6 +124,7 @@ class MainWindow(QMainWindow):
     def _open_settings(self) -> None:
         if hasattr(self, "player_view"):
             self.player_view.pause_watchdog(True)
+            self.player_view.set_emulator_visible(False)
         try:
             dlg = SettingsDialog(self, self.current_palette)
             dlg.theme_selected.connect(self._on_theme_changed)
@@ -138,14 +139,15 @@ class MainWindow(QMainWindow):
         finally:
             if hasattr(self, "player_view"):
                 self.player_view.pause_watchdog(False)
+                self.player_view.set_emulator_visible(True)
                 self.player_view.sync_geometry()
 
     def _on_splash_finished(self, setup_ready: bool) -> None:
         if setup_ready:
-            # Setup complete & emulator fully opened -> switch directly to active Player
+            # Setup complete -> transition to Player Dashboard with profile selection
             self.stack.setCurrentIndex(2)
-            self.player_view.show_running_player()
-            self.title_bar.set_status("running")
+            self.player_view.stack.setCurrentIndex(0)
+            self.title_bar.set_status("offline")
         else:
             # First run -> go to Setup Wizard
             self.stack.setCurrentIndex(1)

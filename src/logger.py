@@ -80,3 +80,4 @@ def setup_logging() -> Path:
 
     logging.info("Anvill logging initialized. Log file: %s", LOG_FILE)
     return LOG_FILE
+

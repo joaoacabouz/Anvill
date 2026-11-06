@@ -142,27 +142,13 @@ class SplashScreen(QWidget):
                 QTimer.singleShot(350, lambda: self.splash_finished.emit(False))
             return
 
-        # Setup is already complete! If player_view is available, track real emulator boot until 100%
-        if self.player_view and hasattr(self.player_view, "start_boot_session"):
-            if not self._boot_started:
-                self._boot_started = True
-                self._progress_val = 15
-                self.progress_bar.setValue(15)
-                self.status_lbl.setText("Checking hardware acceleration (WHPX)...")
-
-                self.player_view.start_boot_session(
-                    status_callback=self._on_boot_status,
-                    finished_callback=self._on_boot_finished,
-                )
-            return
-
-        # Fallback if player_view is not passed (e.g. standalone test)
-        self._progress_val += 4
+        # Setup is already complete -> advance progress and transition to Player Dashboard
+        self._progress_val += 5
         self.progress_bar.setValue(min(100, self._progress_val))
         if self._progress_val >= 100:
             self._timer.stop()
-            self.status_lbl.setText("✓ Ready! Loading Player...")
-            QTimer.singleShot(300, lambda: self.splash_finished.emit(True))
+            self.status_lbl.setText("✓ Ready! Loading Player Dashboard...")
+            QTimer.singleShot(250, lambda: self.splash_finished.emit(True))
 
     def _on_boot_status(self, text: str) -> None:
         """Dynamically increments the progress bar according to real boot milestones."""

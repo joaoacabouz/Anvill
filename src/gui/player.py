@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -44,6 +45,7 @@ from profiles import get_hardware_profile, get_spoof_profile, load_profiles
 
 if platform.system() == "Windows":
     user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
     WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
 
     SetWindowLongPtr = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
@@ -70,13 +72,36 @@ if platform.system() == "Windows":
     SW_HIDE = 0
 else:
     user32 = None
+    kernel32 = None
+
+
+def _get_process_name(pid: int) -> str:
+    """Retrieves the executable file name (lowercase) for a given Win32 process ID."""
+    if not kernel32 or not pid or platform.system() != "Windows":
+        return ""
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    h_proc = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not h_proc:
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(512)
+        size = wintypes.DWORD(512)
+        if kernel32.QueryFullProcessImageNameW(h_proc, 0, buf, ctypes.byref(size)):
+            return Path(buf.value).name.lower()
+        return ""
+    finally:
+        kernel32.CloseHandle(h_proc)
 
 
 def find_emulator_windows(
     avd_name: str,
     target_pid: Optional[int] = None,
 ) -> Tuple[Optional[int], List[int]]:
-    """Locates the emulator display HWND and any auxiliary floating toolbar HWNDs."""
+    """Locates the emulator display HWND and any auxiliary floating toolbar HWNDs.
+
+    Strictly inspects owning process executable names to guarantee browsers (Brave, Chrome, Edge)
+    and external apps are never accidentally captured or docked.
+    """
     if not user32:
         return None, []
 
@@ -91,6 +116,12 @@ def find_emulator_windows(
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         if pid.value == my_pid:
+            return True
+
+        proc_name = _get_process_name(pid.value)
+        # Strictly restrict candidates to QEMU / emulator processes
+        valid_procs = ("emulator.exe", "qemu-system-x86_64.exe", "qemu-system-aarch64.exe")
+        if not (proc_name.startswith("qemu-system-") or proc_name in valid_procs):
             return True
 
         length = user32.GetWindowTextLengthW(hwnd)
@@ -108,22 +139,20 @@ def find_emulator_windows(
         h = rect.bottom - rect.top
 
         # Floating toolbars or small utility windows created by QEMU
-        if ("tool" in cls.lower() or "savebits" in cls.lower() or (w < 120 and h > 50)) and (
-            "emulator" in title.lower() or (target_pid and pid.value == target_pid)
-        ):
+        if "tool" in cls.lower() or "savebits" in cls.lower() or (w < 120 and h > 50):
             toolbars.append(hwnd)
             return True
 
         # Android display window
-        if "android emulator" in title.lower() or (
-            "qwindowicon" in cls.lower() and ("emulator" in title.lower() or avd_name.lower() in title.lower())
-        ):
-            if w >= 150 and h >= 150:
+        if "qwindowicon" in cls.lower() or "android emulator" in title.lower() or avd_name.lower() in title.lower():
+            if w >= 200 and h >= 200:
                 priority = 90
+                if "android emulator" in title.lower():
+                    priority += 10
+                if avd_name.lower() in title.lower():
+                    priority += 15
                 if target_pid and pid.value == target_pid:
-                    priority = 100
-                elif avd_name.lower() in title.lower():
-                    priority = 95
+                    priority += 20
                 display_candidates.append((hwnd, title, priority))
 
         return True
@@ -484,9 +513,18 @@ class PlayerView(QWidget):
         self.boot_status_lbl.setStyleSheet("color: #00E5FF; font-weight: 600; font-size: 13px;")
         self.boot_status_lbl.setAlignment(Qt.AlignCenter)
 
+        # Boot Milestone Progress Bar
+        self.boot_progress = QProgressBar()
+        self.boot_progress.setRange(0, 100)
+        self.boot_progress.setValue(10)
+        self.boot_progress.setTextVisible(False)
+        self.boot_progress.setFixedHeight(6)
+        self.boot_progress.setFixedWidth(280)
+
         bo_layout.addWidget(self.boot_spinner_lbl, alignment=Qt.AlignCenter)
         bo_layout.addWidget(self.boot_title_lbl)
         bo_layout.addWidget(self.boot_status_lbl)
+        bo_layout.addWidget(self.boot_progress, alignment=Qt.AlignCenter)
 
         vf_layout.addWidget(self.boot_overlay)
         layout.addWidget(self.viewport_frame)
@@ -684,6 +722,7 @@ class PlayerView(QWidget):
 
         self.stack.setCurrentIndex(1)
         self.boot_overlay.setVisible(True)
+        self.boot_progress.setValue(10)
         self.boot_title_lbl.setText("Starting Android Tablet...")
         self.boot_status_lbl.setText("Initializing QEMU engine in 16:9 widescreen...")
         self.status_changed.emit("booting")
@@ -697,7 +736,7 @@ class PlayerView(QWidget):
 
         if status_callback:
             self.boot_worker.status_signal.connect(status_callback)
-        self.boot_worker.status_signal.connect(self.boot_status_lbl.setText)
+        self.boot_worker.status_signal.connect(self._on_boot_status)
 
         def _on_finish(success: bool, err_msg: str):
             self._on_boot_result(success, err_msg)
@@ -708,6 +747,28 @@ class PlayerView(QWidget):
         self.boot_worker.start()
         self._start_fast_embedding_poll()
         return True
+
+    def _on_boot_status(self, text: str) -> None:
+        """Updates status text and advances the progress bar based on boot milestones."""
+        self.boot_status_lbl.setText(text)
+        low = text.lower()
+        val = 15
+        if "hardware" in low or "resolving" in low:
+            val = 25
+        elif "tablet" in low or "configuring" in low:
+            val = 40
+        elif "launching" in low or "qemu" in low:
+            val = 55
+        elif "connection" in low or "adb" in low:
+            val = 70
+        elif "boot" in low or "waiting" in low:
+            val = 85
+        elif "anti-detection" in low or "spoofing" in low or "docking" in low:
+            val = 95
+        elif "ready" in low or "running" in low:
+            val = 100
+        if hasattr(self, "boot_progress"):
+            self.boot_progress.setValue(max(self.boot_progress.value(), val))
 
     def _start_emulator(self) -> None:
         hw = self.hw_combo.currentText()
@@ -750,12 +811,12 @@ class PlayerView(QWidget):
 
         if configure_docked_window(disp_hwnd, owner_hwnd):
             self.embedded_hwnd = disp_hwnd
-            self.boot_overlay.setVisible(False)
             self._sync_geometry()
 
-            # Fast check if device is already booted
+            # Fast check if device is already booted and ready
             res = self.adb.run("shell", "getprop", "sys.boot_completed", timeout=3)
             if res.stdout.strip() == "1":
+                self._reveal_docked_player()
                 self.status_changed.emit("running")
 
     def _sync_geometry(self) -> None:
@@ -843,14 +904,23 @@ class PlayerView(QWidget):
 
     def _on_boot_result(self, success: bool, err_msg: str) -> None:
         if success:
+            if hasattr(self, "boot_progress"):
+                self.boot_progress.setValue(100)
+            self.boot_status_lbl.setText("✓ Android Tablet ready and running!")
             self.status_changed.emit("running")
             if not self.embedded_hwnd:
                 self._try_embed_window()
+            QTimer.singleShot(250, self._reveal_docked_player)
         else:
             QMessageBox.critical(self, "Emulator Error", f"Failed to start emulator:\n{err_msg}")
             self._cleanup_session()
             self.stack.setCurrentIndex(0)
             self.status_changed.emit("offline")
+
+    def _reveal_docked_player(self) -> None:
+        """Dismisses the boot progress overlay and smoothly reveals the docked Android tablet."""
+        self.boot_overlay.setVisible(False)
+        self._sync_geometry()
 
     def _cleanup_session(self) -> None:
         if self._embed_timer:
@@ -859,6 +929,8 @@ class PlayerView(QWidget):
             user32.ShowWindow(self.embedded_hwnd, SW_HIDE)
         self.embedded_hwnd = None
         self.boot_overlay.setVisible(True)
+        if hasattr(self, "boot_progress"):
+            self.boot_progress.setValue(0)
 
     def _stop_emulator(self) -> None:
         reply = QMessageBox.question(

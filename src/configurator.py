@@ -75,8 +75,18 @@ class AvdConfig:
         self["hw.initialOrientation"] = "landscape"
         self["skin.name"] = f"{profile.width}x{profile.height}"
         self["skin.path"] = f"{profile.width}x{profile.height}"
-        self["hw.device.name"] = "SM-X910"
-        self["hw.device.manufacturer"] = "samsung"
+        self["hw.device.name"] = "pixel_tablet"
+        self["hw.device.manufacturer"] = "Google"
+        self["hw.device.hash2"] = "MD5:4eeb2eb720b193342b0f2b948e427ed5"
+
+        # If a legacy phone boot snapshot exists, clean it up to prevent restoring portrait memory state
+        snapshot_dir = self.path.parent / "snapshots" / "default_boot"
+        if snapshot_dir.exists():
+            import shutil
+            try:
+                shutil.rmtree(snapshot_dir, ignore_errors=True)
+            except Exception:
+                pass
 
     def atomic_write(self) -> None:
         """Writes the file atomically (UTF-8, no BOM)."""

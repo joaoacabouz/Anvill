@@ -87,14 +87,18 @@ def resolve_auto_profile(
     inspector_or_ram: Any = None,
     cpu: Any | None = None,
     inspector: Any | None = None,
+    *args: Any,
+    **kwargs: Any,
 ) -> VMProfile:
     """Calculates the 'auto' profile dynamically from host hardware."""
-    target_inspector = inspector if inspector is not None else inspector_or_ram
+    target_inspector = inspector if inspector is not None else kwargs.get("inspector", inspector_or_ram)
     if cpu is not None:
         ram = target_inspector
         ram_total_gb = ram.total_mb / 1024.0
         logical = cpu.logical_threads
     else:
+        if target_inspector is None:
+            target_inspector = HostInspector.detect()
         ram_total_gb = target_inspector.ram.total_mb / 1024.0
         logical = target_inspector.cpu.logical_threads
 
@@ -108,6 +112,7 @@ def resolve_auto_profile(
     cpu_cores = max(2, min(8, round(logical * 0.5)))
 
     return VMProfile(
+        name="auto",
         ram_mb=ram_mb,
         heap_mb=heap_mb,
         cpu_cores=cpu_cores,
