@@ -216,14 +216,10 @@ def test_adb_manager_boot_polling():
 def test_adb_spoof_apply():
     with patch.object(vm.subprocess, "run") as mock_run:
         spoof = vm.get_spoof_profile(vm.load_profiles(), "s23_ultra")
-        n_calls = 1 + 1 + len(spoof.props)  # root + wait-for-device + setprop*
-        mock_run.side_effect = [
-            MagicMock(returncode=0, stdout="root\n"),  # adb root
-            MagicMock(returncode=0, stdout="device\n"),  # wait-for-device
-        ] + [MagicMock(returncode=0, stdout="")] * (n_calls - 2)
+        mock_run.return_value = MagicMock(returncode=0, stdout="device\n", stderr="")
         adb = vm.AdbManager(platform_tools=Path("/fake/path"))
         adb.apply_spoof(spoof, persist=False)
-        setprop_calls = [c for c in mock_run.call_args_list if "setprop" in c.args[0]]
+        setprop_calls = [c for c in mock_run.call_args_list if len(c.args[0]) >= 4 and c.args[0][3] == "setprop"]
         assert len(setprop_calls) == len(spoof.props)
     print(f"✓ AdbManager: apply_spoof runs setprop for all {len(spoof.props)} props")
 
@@ -265,6 +261,66 @@ def test_accept_all_licenses_prepopulation():
     print("✓ accept_all_licenses pre-populates official license hashes")
 
 
+def test_debloat_and_protected_packages():
+    import root_avd
+    # 1. Ensure essential packages are protected
+    assert "com.android.vending" in root_avd.PROTECTED_PACKAGES  # Google Play Store
+    assert "com.google.android.gms" in root_avd.PROTECTED_PACKAGES  # Play Services
+    assert "com.google.android.gsf" in root_avd.PROTECTED_PACKAGES
+    assert "com.android.systemui" in root_avd.PROTECTED_PACKAGES
+
+    # 2. Ensure bloatware does not accidentally include protected packages
+    for b in root_avd.BLOATWARE_PACKAGES:
+        assert b not in root_avd.PROTECTED_PACKAGES, f"Protected package {b} found in bloatware list!"
+
+    print("✓ Debloat: Google Play Store & Core OS packages are strictly protected")
+
+
+def test_anti_detection_script_generation():
+    import root_avd
+    sample_props = {
+        "ro.product.brand": "samsung",
+        "ro.product.model": "SM-S918B",
+        "ro.product.manufacturer": "samsung",
+        "ro.soc.manufacturer": "Qualcomm",
+    }
+    script = root_avd.build_anti_detection_script(sample_props)
+    assert "ro.kernel.qemu 0" in script
+    assert "ro.boot.qemu 0" in script
+    assert "del_prop ro.kernel.qemu" in script
+    assert "settings put global adb_enabled 0" in script
+    assert "settings put global development_settings_enabled 0" in script
+    assert "settings put secure mock_location 0" in script
+    assert "magisk --denylist enable" in script
+    assert "SM-S918B" in script
+    print("✓ Anti-detection script suppresses QEMU, enables Magisk DenyList & hides dev options")
+
+
+def test_harden_avd_config_hardware_sensors():
+    import root_avd
+    with tempfile.TemporaryDirectory() as td:
+        avd_root = Path(td)
+        avd_name = "Test_AVD"
+        avd_dir = avd_root / f"{avd_name}.avd"
+        avd_dir.mkdir(parents=True)
+        config_ini = avd_dir / "config.ini"
+        config_ini.write_text("hw.ramSize=4096\nPlayStore.enabled=no\n", encoding="utf-8")
+
+        props = {"ro.product.manufacturer": "samsung", "ro.product.model": "SM-S918B"}
+        root_avd.harden_avd_config(avd_root, avd_name, props)
+
+        cfg_after = config_ini.read_text(encoding="utf-8")
+        assert "PlayStore.enabled=yes" in cfg_after
+        assert "hw.device.manufacturer=samsung" in cfg_after
+        assert "hw.device.name=SM-S918B" in cfg_after
+        assert "hw.sensors.orientation=yes" in cfg_after
+        assert "hw.accelerometer=yes" in cfg_after
+        assert "hw.gyroscope=yes" in cfg_after
+        assert "hw.battery=yes" in cfg_after
+        assert "hw.gps=yes" in cfg_after
+    print("✓ harden_avd_config enforces PlayStore, Samsung hardware identity & physical sensors")
+
+
 if __name__ == "__main__":
     test_profiles_json_load()
     test_hardware_profiles_resolution()
@@ -281,4 +337,7 @@ if __name__ == "__main__":
     test_portable_env()
     test_exec_cmd_structure()
     test_accept_all_licenses_prepopulation()
+    test_debloat_and_protected_packages()
+    test_anti_detection_script_generation()
+    test_harden_avd_config_hardware_sensors()
     print("\n✅ All tests passed successfully!")

@@ -782,7 +782,12 @@ class AdbManager:
             else:
                 _print(f"[yellow]setprop {key} failed: {result.stderr.strip()}[/yellow]")
 
-        _print(f"[green]Applied {applied}/{len(spoof.props)} spoof properties[/green]")
+        # Anti-detection: suppress QEMU indicators, hide developer options & mock locations
+        self.run("shell", "resetprop --delete ro.kernel.qemu 2>/dev/null; resetprop --delete ro.boot.qemu 2>/dev/null; setprop ro.kernel.qemu 0 2>/dev/null; setprop ro.boot.qemu 0 2>/dev/null", timeout=10)
+        self.run("shell", "settings put global adb_enabled 0 2>/dev/null; settings put global development_settings_enabled 0 2>/dev/null; settings put secure mock_location 0 2>/dev/null", timeout=10)
+        self.run("shell", "magisk --denylist enable 2>/dev/null; magisk --denylist add com.google.android.gms com.google.android.gms.unstable 2>/dev/null; magisk --denylist add com.google.android.vending 2>/dev/null", timeout=10)
+
+        _print(f"[green]Applied {applied}/{len(spoof.props)} spoof properties (anti-detection active)[/green]")
 
         if persist:
             self.persist_spoof(spoof)
@@ -1046,6 +1051,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cold-boot", action="store_true", help="Force cold boot (disable snapshots).")
     parser.add_argument("--wipe-data", action="store_true", help="Reset user data to default state.")
     parser.add_argument("--persist-spoof", action="store_true", help="Persist spoof properties via adb remount.")
+    parser.add_argument("--debloat", action="store_true", help="Debloat Android VM after boot (removes non-essential apps).")
     parser.add_argument("--root-magisk", action="store_true", help="Patch AVD ramdisk with Magisk root and exit.")
     parser.add_argument("--restore-root", action="store_true", help="Restore stock unrooted ramdisk and exit.")
     parser.add_argument("--system", type=Path, default=None, help="Path to a custom/modified system.img.")
@@ -1087,6 +1093,7 @@ def run_emulator(
     safe_gpu: bool,
     inspector: HostInspector,
     persist_spoof: bool = False,
+    debloat: bool = False,
     writable_system: bool = False,
     no_boot_anim: bool = False,
     cold_boot: bool = False,
@@ -1145,13 +1152,21 @@ def run_emulator(
         return 1
 
     try:
-        if not spoof.is_empty():
-            if launcher.adb.wait_for_boot_completed(interval=2, timeout=120):
+        if launcher.adb.wait_for_boot_completed(interval=2, timeout=120):
+            if not spoof.is_empty():
                 launcher.adb.apply_spoof(spoof, persist=persist_spoof)
             else:
-                _print("[yellow]Boot not detected yet — skipping initial spoofing injection[/yellow]")
+                _print("[dim]Device spoofing: none (stock x86_64)[/dim]")
+
+            if debloat:
+                try:
+                    from root_avd import debloat_android
+                    debloat_android(launcher.adb.adb_path, launcher.adb.env)
+                except Exception as exc:
+                    _print(f"[yellow]Debloat error: {exc}[/yellow]")
         else:
-            _print("[dim]Device spoofing: none (stock x86_64)[/dim]")
+            if not spoof.is_empty():
+                _print("[yellow]Boot not detected yet — skipping initial spoofing injection[/yellow]")
 
         launcher.maybe_start_scrcpy(ready_timeout=120)
         launcher.wait()
@@ -1221,6 +1236,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         safe_gpu=args.safe_gpu,
         inspector=inspector,
         persist_spoof=args.persist_spoof,
+        debloat=args.debloat,
         writable_system=args.writable_system,
         no_boot_anim=args.no_boot_anim,
         cold_boot=args.cold_boot,

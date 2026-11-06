@@ -95,9 +95,9 @@ ADOPTIUM_JDK_17_URL = (
 REQUIRED_PACKAGES = (
     "emulator",
     "platform-tools",
-    "system-images;android-36;google_apis;x86_64",
-    "extras;google;usb_driver",
-    "extras;google;Android_Emulator_Hypervisor_Driver",
+    "system-images/android-36/google_apis/x86_64",
+    "extras/google/usb_driver",
+    "extras/google/Android_Emulator_Hypervisor_Driver",
 )
 
 
@@ -498,19 +498,24 @@ def install_sdk_package(sdk_root: Path, package: str, env: dict[str, str]) -> No
     """Installs an SDK package using native android CLI when available, or classic sdkmanager."""
     android_bin = sdk_root / "cmdline-tools" / "latest" / "bin" / ("android.exe" if platform.system() == "Windows" else "android")
     pkg_slash = package.replace(";", "/")
-    pkg_semi = package.replace("/", ";") if ("/" in package or ";" in package) else package
 
     if android_bin.exists():
         cmd = [str(android_bin), f"--sdk={sdk_root}", "sdk", "install", pkg_slash]
         run(cmd, cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
         return
 
-    # Classic sdkmanager (requires semicolons: e.g. system-images;android-36;google_apis;x86_64)
+    # Classic sdkmanager: pass slash notation first (prevents cmd.exe semicolon splitting)
     sdkmanager = sdk_root / "cmdline-tools" / "latest" / "bin" / "sdkmanager"
     if platform.system() == "Windows":
         sdkmanager = sdkmanager.with_suffix(".bat")
-    cmd = _exec_cmd(sdkmanager, f"--sdk_root={sdk_root}", pkg_semi)
-    run(cmd, cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
+    try:
+        cmd = _exec_cmd(sdkmanager, f"--sdk_root={sdk_root}", pkg_slash)
+        run(cmd, cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
+    except Exception:
+        # Fallback with semicolon notation if legacy sdkmanager specifically requires it
+        pkg_semi = package.replace("/", ";")
+        cmd = _exec_cmd(sdkmanager, f"--sdk_root={sdk_root}", pkg_semi)
+        run(cmd, cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
 
 
 def install_packages(sdk_root: Path, packages: Sequence[str], env: dict[str, str]) -> None:
@@ -566,6 +571,13 @@ def create_avd(
 
     sys_img_dir = sdk_root / "system-images" / "android-36" / "google_apis" / "x86_64"
     if not sys_img_dir.exists():
+        print(f"System image not found at {sys_img_dir}. Attempting direct package installation...")
+        try:
+            install_sdk_package(sdk_root, "system-images/android-36/google_apis/x86_64", env)
+        except Exception as exc:
+            print(f"Direct install failed: {exc}")
+
+    if not sys_img_dir.exists():
         raise RuntimeError(
             f"System image not found at {sys_img_dir}. "
             "The system-images package failed to download or install. "
@@ -618,6 +630,20 @@ def create_avd(
             "hw.trackMouse = yes\n",
             encoding="utf-8",
         )
+
+    # Ensure config.ini has Google Play Store enabled
+    cfg_file = avd_folder / "config.ini"
+    if cfg_file.exists():
+        cfg_lines = cfg_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        cfg_dict = {}
+        for line in cfg_lines:
+            if "=" in line:
+                k, v = line.split("=", 1)
+                cfg_dict[k.strip()] = v.strip()
+        cfg_dict["PlayStore.enabled"] = "yes"
+        cfg_dict["hw.battery"] = "yes"
+        cfg_dict["hw.gps"] = "yes"
+        cfg_file.write_text("\n".join(f"{k}={v}" for k, v in cfg_dict.items()) + "\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
