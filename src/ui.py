@@ -37,7 +37,7 @@ def log(msg: str) -> None:
     if CONSOLE is not None:
         CONSOLE.print(msg)
     else:
-        clean = re.sub(r"\[/?\w+(?:=[^\]]*)?\]", "", msg)
+        clean = re.sub(r"\[/?[^\]]+\]", "", msg)
         print(clean)
 
 

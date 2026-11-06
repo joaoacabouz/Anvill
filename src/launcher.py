@@ -44,7 +44,7 @@ class LaunchFlags:
     avd_name: str
     scrcpy: bool
     safe_gpu: bool
-    gpu_vendor: str
+    gpu_vendor: str = "UNKNOWN"
     writable_system: bool = False
     use_accel: bool = True
     no_boot_anim: bool = False
@@ -108,10 +108,12 @@ class LaunchFlags:
         return ["scrcpy", f"--max-fps={fps}", f"--video-bit-rate={bitrate}"]
 
 
-def pick_gpu_mode(host: HostInspector, safe_gpu: bool) -> str:
+def pick_gpu_mode(host: HostInspector, safe_gpu: bool = False) -> str:
     """Chooses GPU mode based on vendor and --safe-gpu flag."""
-    if safe_gpu or host.gpu.vendor == "INTEL_INTEGRATED":
+    if safe_gpu:
         return "auto"
+    if host.gpu.vendor == "INTEL_INTEGRATED":
+        return "angle_indirect"
     return "host"
 
 
@@ -135,6 +137,17 @@ class EmulatorLauncher:
         self.scrcpy_process: subprocess.Popen[bytes] | None = None
         self.scrcpy_started = False
         self._output_thread: threading.Thread | None = None
+
+    def build_args(self) -> Sequence[str]:
+        """Delegate build_args to flags."""
+        return self.flags.build_args()
+
+    def build_scrcpy_args(self, serial: str = "") -> Sequence[str]:
+        """Delegate build_scrcpy_args to flags with optional serial."""
+        args = list(self.flags.build_scrcpy_args())
+        if serial:
+            args.extend(["-s", serial])
+        return args
 
     def launch(self, ready_timeout: int = 180) -> subprocess.Popen[bytes]:
         """Launches the emulator and awaits device readiness."""

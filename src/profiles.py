@@ -7,7 +7,7 @@ from profiles.json.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
@@ -41,6 +41,7 @@ class VMProfile:
     dpi: int
     fps: int
     disk_gb: int
+    name: str = ""
 
     @property
     def display(self) -> Tuple[int, int]:
@@ -54,15 +55,47 @@ class VMProfile:
 class DeviceSpoof:
     """Device properties to inject via ADB (setprop)."""
 
-    props: Dict[str, str]
+    props: Dict[str, str] = field(default_factory=dict)
+    name: str = ""
+
+    def __init__(
+        self,
+        props: Dict[str, str] | None = None,
+        name: str = "",
+        properties: Dict[str, str] | None = None,
+    ):
+        raw = props if props is not None else (properties or {})
+        self.props = {
+            k: str(v)
+            for k, v in raw.items()
+            if isinstance(k, str) and not k.startswith("_") and k != "description"
+        }
+        self.name = name
 
     def is_empty(self) -> bool:
         return not self.props
 
+    def get(self, key: str, default: str | None = None) -> str | None:
+        return self.props.get(key, default)
 
-def resolve_auto_profile(inspector: HostInspector) -> VMProfile:
+    @property
+    def properties(self) -> Dict[str, str]:
+        return self.props
+
+
+def resolve_auto_profile(
+    inspector_or_ram: Any,
+    cpu: Any | None = None,
+) -> VMProfile:
     """Calculates the 'auto' profile dynamically from host hardware."""
-    ram_total_gb = inspector.ram.total_mb / 1024.0
+    if cpu is not None:
+        ram = inspector_or_ram
+        ram_total_gb = ram.total_mb / 1024.0
+        logical = cpu.logical_threads
+    else:
+        inspector = inspector_or_ram
+        ram_total_gb = inspector.ram.total_mb / 1024.0
+        logical = inspector.cpu.logical_threads
 
     if ram_total_gb >= 28:
         ram_mb, heap_mb = 12288, 1024
@@ -71,7 +104,6 @@ def resolve_auto_profile(inspector: HostInspector) -> VMProfile:
     else:
         ram_mb, heap_mb = 4096, 512
 
-    logical = inspector.cpu.logical_threads
     cpu_cores = max(2, min(8, round(logical * 0.5)))
 
     return VMProfile(
@@ -92,8 +124,11 @@ def load_profiles(path: Path | None = None) -> Dict[str, Any]:
     if not prof_path.exists():
         raise ProfilesError(f"Profiles not found at {prof_path}")
 
-    with prof_path.open("r", encoding="utf-8") as fh:
-        data = json.load(fh)
+    try:
+        with prof_path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception as exc:
+        raise ProfilesError(f"Failed to parse profiles at {prof_path}: {exc}") from exc
 
     missing = [k for k in ("hardware_profiles", "spoof_profiles") if k not in data]
     if missing:
@@ -102,8 +137,19 @@ def load_profiles(path: Path | None = None) -> Dict[str, Any]:
     return data
 
 
-def get_hardware_profile(data: Dict[str, Any], name: str, inspector: HostInspector | None = None) -> VMProfile:
+def get_hardware_profile(
+    data_or_name: Dict[str, Any] | str,
+    name_or_data: str | Dict[str, Any] | None = None,
+    inspector: HostInspector | None = None,
+) -> VMProfile:
     """Resolves a hardware profile by name ('auto' or a fixed profile)."""
+    if isinstance(data_or_name, str):
+        name = data_or_name
+        data = name_or_data if isinstance(name_or_data, dict) else load_profiles()
+    else:
+        data = data_or_name
+        name = str(name_or_data) if name_or_data is not None else "auto"
+
     profiles = data["hardware_profiles"]
     if name not in profiles:
         names = ", ".join(profiles)
@@ -120,6 +166,7 @@ def get_hardware_profile(data: Dict[str, Any], name: str, inspector: HostInspect
             raise ProfilesError(f"Profile '{name}' is missing '{key}' in hardware_profiles")
 
     return VMProfile(
+        name=name,
         ram_mb=spec["ram_mb"],
         heap_mb=spec["heap_mb"],
         cpu_cores=spec["cpu_cores"],
@@ -131,11 +178,21 @@ def get_hardware_profile(data: Dict[str, Any], name: str, inspector: HostInspect
     )
 
 
-def get_spoof_profile(data: Dict[str, Any], name: str) -> DeviceSpoof:
+def get_spoof_profile(
+    data_or_name: Dict[str, Any] | str,
+    name_or_data: str | Dict[str, Any] | None = None,
+) -> DeviceSpoof:
     """Resolves a spoofing profile by name.
 
     Filters out metadata like 'description' and '_empty' to only keep valid Android properties.
     """
+    if isinstance(data_or_name, str):
+        name = data_or_name
+        data = name_or_data if isinstance(name_or_data, dict) else load_profiles()
+    else:
+        data = data_or_name
+        name = str(name_or_data) if name_or_data is not None else "stock"
+
     profiles = data["spoof_profiles"]
     if name not in profiles:
         names = ", ".join(profiles)
@@ -143,12 +200,12 @@ def get_spoof_profile(data: Dict[str, Any], name: str) -> DeviceSpoof:
 
     spec = profiles[name]
     if not isinstance(spec, dict) or "_empty" in spec:
-        return DeviceSpoof(props={})
+        return DeviceSpoof(name=name, props={})
 
     props = {
         k: str(v)
         for k, v in spec.items()
         if isinstance(k, str) and not k.startswith("_") and k != "description"
     }
-    return DeviceSpoof(props=props)
+    return DeviceSpoof(name=name, props=props)
 

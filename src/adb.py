@@ -73,7 +73,7 @@ class AdbManager:
             env=self.env,
         )
 
-    def wait_for_device(self, timeout: int = 120) -> bool:
+    def wait_for_device(self, timeout: int = 120, interval: float = 1.0) -> bool:
         """Executes `adb wait-for-device` with fallback state polling."""
         try:
             result = self.run("wait-for-device", timeout=timeout)
@@ -92,7 +92,7 @@ class AdbManager:
                     return True
             except Exception:
                 pass
-            time.sleep(1)
+            time.sleep(interval)
         return False
 
     def wait_for_boot_completed(self, interval: int = 2, timeout: int = 120) -> bool:
@@ -108,10 +108,10 @@ class AdbManager:
             time.sleep(interval)
         return False
 
-    def apply_spoof(self, spoof: DeviceSpoof, persist: bool = False) -> bool:
-        """Applies device spoofing properties via ADB."""
+    def apply_spoof(self, spoof: DeviceSpoof, persist: bool = False) -> int:
+        """Applies device spoofing properties via ADB. Returns number of applied properties."""
         if spoof.is_empty():
-            return True
+            return 0
 
         _log("[cyan]Applying device spoofing via ADB...[/cyan]")
         root_result = self.run("root", timeout=15)
@@ -141,7 +141,7 @@ class AdbManager:
         if persist:
             self.persist_spoof(spoof)
 
-        return True
+        return applied
 
     def persist_spoof(self, spoof: DeviceSpoof) -> bool:
         """Persists props into writable system partition via remount."""

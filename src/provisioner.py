@@ -251,7 +251,8 @@ def _find_java_exe(sdk_root: Path | None = None, env: dict[str, str] | None = No
 def _exec_cmd(path: Path, *args: str) -> list[str]:
     """Build a subprocess arg list for a binary or batch wrapper on Windows."""
     if platform.system() == "Windows" and path.suffix.lower() == ".bat":
-        return ["cmd", "/c", str(path), *args]
+        safe_args = [f'"{a}"' if (";" in a and not (a.startswith('"') and a.endswith('"'))) else a for a in args]
+        return ["cmd", "/c", str(path), *safe_args]
     return [str(path), *args]
 
 

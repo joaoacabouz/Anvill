@@ -45,6 +45,12 @@ class HostGPU:
 
     model: str
     vendor: GpuVendor
+    name: str = ""
+
+    def __init__(self, model: str = "", vendor: GpuVendor = "UNKNOWN", name: str = ""):
+        self.model = model or name
+        self.vendor = vendor
+        self.name = self.model
 
     def is_dedicated(self) -> bool:
         return self.vendor in ("NVIDIA", "AMD")

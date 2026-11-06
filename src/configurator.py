@@ -46,8 +46,14 @@ class AvdConfig:
     def has_value(self, key: str) -> bool:
         return key in self.values
 
+    def __getitem__(self, key: str) -> str:
+        return self.values[key]
+
     def __setitem__(self, key: str, value: str) -> None:
         self.values[key] = value
+
+    def get(self, key: str, default: str | None = None) -> str | None:
+        return self.values.get(key, default)
 
     def update_from(self, profile: VMProfile, gpu_mode: str) -> None:
         """Applies VM profile keys into the config."""
@@ -109,6 +115,10 @@ class AvdConfigurator:
         self.avd_root = avd_root or AVD_ROOT
         self.avd_dir = self.avd_root / f"{self.avd_name}.avd"
         self.config_path = self.avd_dir / "config.ini"
+        self.relocate_paths()
+
+    def self_heal_paths(self) -> None:
+        """Alias for relocate_paths."""
         self.relocate_paths()
 
     def relocate_paths(self) -> None:

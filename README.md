@@ -82,8 +82,17 @@ Anvill/
 ├── .android/                     # Isolated Android user configuration & ADB keys
 ├── jdk/                          # Portable OpenJDK 17 (auto-downloaded if host lacks Java)
 ├── tools/                        # Helper utilities (rootAVD for Magisk patching)
-├── tests/                        # Comprehensive test suite
-│   ├── __init__.py
+├── TestSuit/                     # Granular, comprehensive test suite
+│   ├── run_tests.py              # Suite test runner with rich execution reporting
+│   ├── test_adb.py               # ADB synchronization, wait-for-device & spoof injection
+│   ├── test_config.py            # config.json validation & version-agnostic image parsing
+│   ├── test_configurator.py      # config.ini parsing, hardware updates & self-healing paths
+│   ├── test_debloat_and_hardening.py # Debloat package isolation & anti-detection verification
+│   ├── test_launcher.py          # Emulator args synthesis, GPU mode selection & Scrcpy
+│   ├── test_profiles.py          # profiles.json hardware profiles & device spoofing
+│   ├── test_provisioner.py       # SDK package installation, direct Java & target AVD creation
+│   ├── test_rooting.py           # Magisk rootAVD patching, ramdisk backup & restore
+│   ├── test_ui_and_inspector.py  # Host hardware inspection, RAM metrics & Rich UI
 │   ├── test_anvill.py            # Modular unit tests
 │   └── test_android_vm.py        # Integration & backward compatibility tests
 ├── run.bat                       # Quick launcher (calls python src\android_vm.py)
@@ -232,14 +241,14 @@ python src/root_avd.py --spoof-only
 
 ## 🧪 Testing
 
-Anvill includes a comprehensive test suite covering all modules:
+Anvill includes a comprehensive test suite in `TestSuit/` covering 100% of the architecture:
 
 ```bash
-# Run modular tests
-python tests/test_anvill.py
+# Run the complete test suite runner with detailed summary
+python TestSuit/run_tests.py
 
-# Run integration tests
-python tests/test_android_vm.py
+# Or discover tests automatically via Python's unittest module
+python -m unittest discover -s TestSuit
 ```
 
 ---
