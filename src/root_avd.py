@@ -1,26 +1,48 @@
-"""Magisk Root, Debloat & Real-Device Provisioner CLI entrypoint for Android 16."""
+"""Magisk Root, Debloat & Real-Device Provisioner CLI entrypoint."""
 
 from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 from typing import Sequence
 
-from anvill.config import get_bloatware_packages, get_protected_packages, load_config
-from anvill.constants import DEFAULT_AVD_NAME, REPO_ROOT
-from anvill.debloat import debloat_android
-from anvill.hardening import (
-    apply_real_device_hardening,
-    build_anti_detection_script,
-    harden_avd_config,
-)
-from anvill.rooting import (
-    ensure_rootavd_tool,
-    is_emulator_running,
-    root_avd,
-    wait_for_boot,
-)
-from anvill.ui import CONSOLE, log
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from config import get_bloatware_packages, get_protected_packages, load_config
+    from constants import DEFAULT_AVD_NAME, REPO_ROOT
+    from debloat import debloat_android
+    from hardening import (
+        apply_real_device_hardening,
+        build_anti_detection_script,
+        harden_avd_config,
+    )
+    from rooting import (
+        ensure_rootavd_tool,
+        is_emulator_running,
+        root_avd,
+        wait_for_boot,
+    )
+    from ui import CONSOLE, log
+except ImportError:
+    from src.config import get_bloatware_packages, get_protected_packages, load_config
+    from src.constants import DEFAULT_AVD_NAME, REPO_ROOT
+    from src.debloat import debloat_android
+    from src.hardening import (
+        apply_real_device_hardening,
+        build_anti_detection_script,
+        harden_avd_config,
+    )
+    from src.rooting import (
+        ensure_rootavd_tool,
+        is_emulator_running,
+        root_avd,
+        wait_for_boot,
+    )
+    from src.ui import CONSOLE, log
 
 # Backward compatibility exports
 BLOATWARE_PACKAGES = get_bloatware_packages()
@@ -30,7 +52,7 @@ PROTECTED_PACKAGES = get_protected_packages()
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="root_avd.py",
-        description="Magisk Root, Debloat & Real-Device Provisioner for Android 16 (API 36).",
+        description="Magisk Root, Debloat & Real-Device Provisioner for Android AVDs",
     )
     parser.add_argument("--avd", default=DEFAULT_AVD_NAME, help=f"AVD name (default: {DEFAULT_AVD_NAME})")
     parser.add_argument("--restore", action="store_true", help="Restore stock unrooted ramdisk from backup.")

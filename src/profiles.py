@@ -11,8 +11,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
-from anvill.constants import PROFILES_PATH
-from anvill.inspector import HostInspector
+import sys
+
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from constants import PROFILES_PATH
+    from inspector import HostInspector
+except ImportError:
+    from src.constants import PROFILES_PATH
+    from src.inspector import HostInspector
 
 
 class ProfilesError(RuntimeError):
@@ -141,3 +151,4 @@ def get_spoof_profile(data: Dict[str, Any], name: str) -> DeviceSpoof:
         if isinstance(k, str) and not k.startswith("_") and k != "description"
     }
     return DeviceSpoof(props=props)
+

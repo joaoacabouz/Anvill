@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
 
-from anvill.constants import AVD_ROOT, SDK_ROOT
-from anvill.profiles import VMProfile
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from constants import AVD_ROOT, SDK_ROOT
+    from profiles import VMProfile
+    from config import get_target_image_info
+except ImportError:
+    from src.constants import AVD_ROOT, SDK_ROOT
+    from src.profiles import VMProfile
+    from src.config import get_target_image_info
 
 
 @dataclass
@@ -128,7 +139,8 @@ class AvdConfigurator:
             sysdir = cfg.values.get("image.sysdir.1", "")
             # Ensure sysdir is valid relative or points inside current SDK
             if not sysdir or (not (self.sdk_root / sysdir).exists() and not Path(sysdir).exists()):
-                cfg["image.sysdir.1"] = r"system-images\android-36\google_apis\x86_64\\"
+                tinfo = get_target_image_info()
+                cfg["image.sysdir.1"] = tinfo["rel_sysdir"].replace("/", "\\") + "\\"
                 cfg.atomic_write()
 
         # 3. Heal hardware-qemu.ini if paths point to a previous host location
@@ -175,3 +187,4 @@ class AvdConfigurator:
                 encoding="utf-8",
             )
         return hw_path
+

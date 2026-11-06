@@ -6,12 +6,13 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Ensure repo root is on sys.path
+# Ensure repo root and src are on sys.path
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT))
 
-import anvill
-from anvill import (
+import src
+from src import (
     AdbManager,
     AvdConfig,
     AvdConfigurator,
@@ -34,7 +35,7 @@ from anvill import (
     load_profiles,
     whpx_is_active,
 )
-from anvill.provisioner import _exec_cmd
+from src.provisioner import _exec_cmd
 
 
 def test_profiles_json_load():
@@ -387,3 +388,4 @@ def run_all_tests():
 
 if __name__ == "__main__":
     run_all_tests()
+

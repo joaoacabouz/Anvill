@@ -174,7 +174,10 @@ def whpx_is_active(sdk_root: Path | None = None) -> bool:
     if platform.system() != "Windows":
         return True
 
-    from anvill.constants import DEFAULT_SDK_ROOT
+    try:
+        from constants import DEFAULT_SDK_ROOT
+    except ImportError:
+        from src.constants import DEFAULT_SDK_ROOT
 
     cand_emulators = []
     if sdk_root is not None:

@@ -1,6 +1,7 @@
 {
   "vm": {
     "avd_name": "Android16_Pro",
+    "auto_root_on_setup": true,
     "default_hardware_profile": "auto",
     "default_spoof_profile": "s23_ultra",
     "default_gpu_mode": "auto",

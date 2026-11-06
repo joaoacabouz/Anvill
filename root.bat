@@ -9,7 +9,7 @@ set PY=python
 if exist "%~dp0.venv\Scripts\python.exe" set PY="%~dp0.venv\Scripts\python.exe"
 
 REM Pure-Python entrypoint (logic is 100% in Python)
-%PY% root_avd.py %*
+%PY% src\root_avd.py %*
 
 if errorlevel 1 (
     echo.

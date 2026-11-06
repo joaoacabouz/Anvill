@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import re
+import sys
+from pathlib import Path
 from typing import Any, Dict, Tuple
 
-from anvill.constants import REPO_ROOT
-from anvill.inspector import HostInspector
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from constants import REPO_ROOT
+    from inspector import HostInspector
+except ImportError:
+    from src.constants import REPO_ROOT
+    from src.inspector import HostInspector
 
 try:
     from rich.console import Console
@@ -117,3 +127,4 @@ def interactive_menu(hardware: Dict[str, Any], spoof: Dict[str, Any]) -> Tuple[s
     p_name = hw_keys[p_idx] if 0 <= p_idx < len(hw_keys) else "auto"
     s_name = sp_keys[s_idx] if 0 <= s_idx < len(sp_keys) else "stock"
     return p_name, s_name
+

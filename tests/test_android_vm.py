@@ -21,6 +21,10 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
         pass
 
 sys.argv = ["test"]
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(REPO_ROOT))
+
 import android_vm as vm  # noqa: E402
 from setup_sdk import _exec_cmd, accept_all_licenses, get_portable_env, whpx_is_active  # noqa: E402
 
@@ -40,7 +44,7 @@ def capture(fn):
 
 
 def test_profiles_json_load():
-    data = vm.load_profiles(Path(__file__).with_name("profiles.json"))
+    data = vm.load_profiles(REPO_ROOT / "profiles.json")
     assert "hardware_profiles" in data and "spoof_profiles" in data
     hp = data["hardware_profiles"]
     assert set(hp) == {"auto", "ultra", "high", "balanced", "low"}

@@ -5,19 +5,30 @@ from __future__ import annotations
 import os
 import platform
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from anvill.constants import SDK_ROOT
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from constants import SDK_ROOT
+except ImportError:
+    from src.constants import SDK_ROOT
 
 if TYPE_CHECKING:
-    from anvill.profiles import DeviceSpoof
+    try:
+        from profiles import DeviceSpoof
+    except ImportError:
+        from src.profiles import DeviceSpoof
 
 
 def _log(msg: str) -> None:
     try:
-        from anvill.ui import log
+        from ui import log
         log(msg)
     except Exception:
         print(msg)
@@ -142,3 +153,4 @@ class AdbManager:
             self.run("shell", "setprop", key, value, timeout=20)
         _log("[green]Spoof properties persisted into filesystem[/green]")
         return True
+

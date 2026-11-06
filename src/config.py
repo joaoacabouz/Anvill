@@ -8,15 +8,24 @@ completely separated from hardware/device profiles in profiles.json.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Set
 
-from anvill.constants import CONFIG_PATH
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from constants import CONFIG_PATH
+except ImportError:
+    from src.constants import CONFIG_PATH
 
 # In-memory default configuration fallback
 DEFAULT_CONFIG: Dict[str, Any] = {
     "vm": {
         "avd_name": "Android16_Pro",
+        "auto_root_on_setup": True,
         "default_hardware_profile": "auto",
         "default_spoof_profile": "s23_ultra",
         "default_gpu_mode": "auto",
@@ -135,3 +144,32 @@ def get_protected_packages(config: Dict[str, Any] | None = None) -> Set[str]:
     """Returns the set of protected packages that must NEVER be removed or disabled."""
     cfg = config or load_config()
     return set(cfg.get("debloat", {}).get("protected_packages", []))
+
+
+def get_target_image_info(config: Dict[str, Any] | None = None) -> Dict[str, str]:
+    """Dynamically parses target image configuration (not limited to any single Android version).
+    
+    Returns breakdown with api level, tag, abi, relative sysdir and ramdisk paths.
+    """
+    cfg = config or load_config()
+    target = cfg.get("sdk", {}).get("target_image", "system-images/android-36/google_apis/x86_64")
+    norm = target.replace(";", "/").strip("/")
+    parts = [p for p in norm.split("/") if p]
+    if len(parts) >= 4 and parts[0] == "system-images":
+        api, tag, abi = parts[1], parts[2], parts[3]
+    elif len(parts) >= 3:
+        api, tag, abi = parts[0], parts[1], parts[2]
+    else:
+        api, tag, abi = "android-36", "google_apis", "x86_64"
+
+    return {
+        "raw": target,
+        "slash": f"system-images/{api}/{tag}/{abi}",
+        "semi": f"system-images;{api};{tag};{abi}",
+        "api": api,                                        # e.g. "android-36"
+        "tag": tag,                                        # e.g. "google_apis"
+        "abi": abi,                                        # e.g. "x86_64"
+        "rel_sysdir": f"system-images/{api}/{tag}/{abi}",
+        "rel_ramdisk": f"system-images/{api}/{tag}/{abi}/ramdisk.img",
+    }
+

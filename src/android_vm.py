@@ -1,4 +1,4 @@
-"""Anvill: Modular, portable Android 16 (API 36) emulator provisioner & launcher."""
+"""Anvill: Modular, portable Android emulator provisioner & launcher."""
 
 from __future__ import annotations
 
@@ -7,6 +7,10 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Sequence
+
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 # ---------------------------------------------------------------------------
 # Auto-Dependency Check
@@ -24,7 +28,9 @@ def _ensure_dependencies() -> None:
 
     if missing:
         import subprocess
-        req_file = Path(__file__).resolve().parent / "requirements.txt"
+        req_file = _SRC_DIR.parent / "requirements.txt"
+        if not req_file.exists():
+            req_file = _SRC_DIR / "requirements.txt"
         print(f"Installing missing Python dependencies ({', '.join(missing)})...")
         if req_file.exists():
             subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(req_file)], check=False)
@@ -33,47 +39,92 @@ def _ensure_dependencies() -> None:
 
 _ensure_dependencies()
 
-from anvill.adb import AdbManager
-from anvill.config import load_config
-from anvill.configurator import AvdConfig, AvdConfigurator
-from anvill.constants import (
-    AVD_ROOT,
-    DEFAULT_AVD_NAME,
-    DEFAULT_AVD_ROOT,
-    DEFAULT_SDK_ROOT,
-    DEFAULT_USER_HOME,
-    PROFILES_PATH,
-    REPO_ROOT,
-    SDK_ROOT,
-    USER_HOME,
-)
-from anvill.debloat import debloat_android
-from anvill.inspector import (
-    GpuVendor,
-    HostCPU,
-    HostGPU,
-    HostInspector,
-    HostRAM,
-    whpx_is_active,
-)
-from anvill.launcher import EmulatorLauncher, LaunchFlags, pick_gpu_mode
-from anvill.profiles import (
-    DeviceSpoof,
-    ProfilesError,
-    VMProfile,
-    get_hardware_profile,
-    get_spoof_profile,
-    load_profiles,
-    resolve_auto_profile,
-)
-from anvill.provisioner import bootstrap, get_portable_env
-from anvill.ui import (
-    CONSOLE,
-    interactive_menu,
-    log as _print,
-    print_banner,
-    print_hardware_panel,
-)
+try:
+    from adb import AdbManager
+    from config import load_config
+    from configurator import AvdConfig, AvdConfigurator
+    from constants import (
+        AVD_ROOT,
+        DEFAULT_AVD_NAME,
+        DEFAULT_AVD_ROOT,
+        DEFAULT_SDK_ROOT,
+        DEFAULT_USER_HOME,
+        PROFILES_PATH,
+        REPO_ROOT,
+        SDK_ROOT,
+        USER_HOME,
+    )
+    from debloat import debloat_android
+    from inspector import (
+        GpuVendor,
+        HostCPU,
+        HostGPU,
+        HostInspector,
+        HostRAM,
+        whpx_is_active,
+    )
+    from launcher import EmulatorLauncher, LaunchFlags, pick_gpu_mode
+    from profiles import (
+        DeviceSpoof,
+        ProfilesError,
+        VMProfile,
+        get_hardware_profile,
+        get_spoof_profile,
+        load_profiles,
+        resolve_auto_profile,
+    )
+    from provisioner import bootstrap, get_portable_env
+    from rooting import root_avd
+    from ui import (
+        CONSOLE,
+        interactive_menu,
+        log as _print,
+        print_banner,
+        print_hardware_panel,
+    )
+except ImportError:
+    from src.adb import AdbManager
+    from src.config import load_config
+    from src.configurator import AvdConfig, AvdConfigurator
+    from src.constants import (
+        AVD_ROOT,
+        DEFAULT_AVD_NAME,
+        DEFAULT_AVD_ROOT,
+        DEFAULT_SDK_ROOT,
+        DEFAULT_USER_HOME,
+        PROFILES_PATH,
+        REPO_ROOT,
+        SDK_ROOT,
+        USER_HOME,
+    )
+    from src.debloat import debloat_android
+    from src.inspector import (
+        GpuVendor,
+        HostCPU,
+        HostGPU,
+        HostInspector,
+        HostRAM,
+        whpx_is_active,
+    )
+    from src.launcher import EmulatorLauncher, LaunchFlags, pick_gpu_mode
+    from src.profiles import (
+        DeviceSpoof,
+        ProfilesError,
+        VMProfile,
+        get_hardware_profile,
+        get_spoof_profile,
+        load_profiles,
+        resolve_auto_profile,
+    )
+    from src.provisioner import bootstrap, get_portable_env
+    from src.rooting import root_avd
+    from src.ui import (
+        CONSOLE,
+        interactive_menu,
+        log as _print,
+        print_banner,
+        print_hardware_panel,
+    )
 
 API_LEVEL = 36
 TARGET_IMAGE = "system-images/android-36/google_apis/x86_64"
@@ -209,7 +260,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="android_vm.py",
-        description="Modular, portable Android 16 (API 36) emulator provisioner & launcher.",
+        description="Modular, portable Android emulator provisioner & launcher.",
     )
     parser.add_argument(
         "--profile",
@@ -286,11 +337,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # Root / unroot commands
     if args.root_magisk:
-        from anvill.rooting import root_avd
         return root_avd(repo_root=REPO_ROOT, avd_name=avd_name)
 
     if args.restore_root:
-        from anvill.rooting import root_avd
         return root_avd(repo_root=REPO_ROOT, avd_name=avd_name, restore=True)
 
     inspector = HostInspector.detect()

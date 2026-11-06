@@ -7,29 +7,51 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
-from anvill.config import load_config
-from anvill.constants import (
-    AVD_ROOT,
-    DEFAULT_AVD_NAME,
-    DEFAULT_RAMDISK_REL,
-    PROFILES_PATH,
-    REPO_ROOT,
-    ROOTAVD_DIR,
-    SDK_ROOT,
-    TOOLS_ROOT,
-    USER_HOME,
-)
-from anvill.debloat import debloat_android
-from anvill.hardening import apply_real_device_hardening
-from anvill.provisioner import get_portable_env
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from config import get_target_image_info, load_config
+    from constants import (
+        AVD_ROOT,
+        DEFAULT_AVD_NAME,
+        DEFAULT_RAMDISK_REL,
+        PROFILES_PATH,
+        REPO_ROOT,
+        ROOTAVD_DIR,
+        SDK_ROOT,
+        TOOLS_ROOT,
+        USER_HOME,
+    )
+    from debloat import debloat_android
+    from hardening import apply_real_device_hardening
+    from provisioner import get_portable_env
+except ImportError:
+    from src.config import get_target_image_info, load_config
+    from src.constants import (
+        AVD_ROOT,
+        DEFAULT_AVD_NAME,
+        DEFAULT_RAMDISK_REL,
+        PROFILES_PATH,
+        REPO_ROOT,
+        ROOTAVD_DIR,
+        SDK_ROOT,
+        TOOLS_ROOT,
+        USER_HOME,
+    )
+    from src.debloat import debloat_android
+    from src.hardening import apply_real_device_hardening
+    from src.provisioner import get_portable_env
 
 
 def _log(msg: str) -> None:
     try:
-        from anvill.ui import log
+        from ui import log
         log(msg)
     except Exception:
         print(msg)
@@ -120,7 +142,9 @@ def root_avd(
 
     adb_bin = sdk_root / "platform-tools" / ("adb.exe" if platform.system() == "Windows" else "adb")
     emu_bin = sdk_root / "emulator" / ("emulator.exe" if platform.system() == "Windows" else "emulator")
-    ramdisk_path = sdk_root / DEFAULT_RAMDISK_REL
+    tinfo = get_target_image_info()
+    ramdisk_rel = Path(tinfo["rel_ramdisk"])
+    ramdisk_path = sdk_root / ramdisk_rel
 
     if not ramdisk_path.exists() and not (debloat_only or spoof_only):
         _log(f"[bold red]Ramdisk image not found:[/bold red] {ramdisk_path}")
@@ -193,7 +217,7 @@ def root_avd(
         if not (debloat_only or spoof_only):
             _log("[cyan]Injecting Magisk into ramdisk via rootAVD...[/cyan]")
             script_name = "rootAVD.bat" if platform.system() == "Windows" else "rootAVD.sh"
-            cmd = [str(tools_dir / script_name), str(DEFAULT_RAMDISK_REL)]
+            cmd = [str(tools_dir / script_name), str(ramdisk_rel)]
 
             res = subprocess.run(
                 cmd,
@@ -217,7 +241,7 @@ def root_avd(
             if avd_initrd.exists() and ramdisk_path.exists():
                 shutil.copyfile(ramdisk_path, avd_initrd)
 
-            _log("[bold green]Magisk successfully patched into Android 16 ramdisk![/bold green]")
+            _log(f"[bold green]Magisk successfully patched into {tinfo['api']} ramdisk![/bold green]")
             _log("[cyan]Original ramdisk backed up to ramdisk.img.backup[/cyan]")
 
         # 2. Debloat Android (keep only Play Store & essential OS services)
@@ -261,3 +285,4 @@ def root_avd(
             except Exception:
                 emu_proc.kill()
             subprocess.run([str(adb_bin), "-e", "emu", "kill"], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, check=False)
+

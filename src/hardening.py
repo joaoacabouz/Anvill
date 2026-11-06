@@ -4,18 +4,27 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict
 
-from anvill.config import load_config
-from anvill.constants import PROFILES_PATH
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from config import load_config
+    from constants import PROFILES_PATH
+except ImportError:
+    from src.config import load_config
+    from src.constants import PROFILES_PATH
 
 
 def _log(msg: str) -> None:
     try:
-        from anvill.ui import log
+        from ui import log
         log(msg)
     except Exception:
         print(msg)
@@ -223,3 +232,4 @@ def apply_real_device_hardening(
     _log(f"[bold green]✓ Real-device configuration applied:[/bold green] [green]{applied_count} properties configured.[/green]")
     _log("[bold green]✓ Anti-detection active:[/bold green] [green]QEMU flags suppressed, Magisk DenyList armed, sensors enabled.[/green]")
     return True
+

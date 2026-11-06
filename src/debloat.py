@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 
-from anvill.config import get_bloatware_packages, get_protected_packages, load_config
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from config import get_bloatware_packages, get_protected_packages, load_config
+except ImportError:
+    from src.config import get_bloatware_packages, get_protected_packages, load_config
 
 
 def _log(msg: str) -> None:
     try:
-        from anvill.ui import log
+        from ui import log
         log(msg)
     except Exception:
         print(msg)
@@ -98,3 +106,4 @@ def debloat_android(adb_bin: Path, env: dict[str, str], config: dict | None = No
     _log(f"[bold green]✓ Debloat finished:[/bold green] [green]{removed} bloatware packages disabled.[/green]")
     _log("[bold green]✓ Verified active:[/bold green] [green]Google Play Store (com.android.vending) + GMS & Core UI intact.[/green]")
     return removed
+

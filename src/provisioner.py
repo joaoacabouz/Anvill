@@ -12,20 +12,37 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
-from anvill.config import load_config
-from anvill.constants import (
-    AVD_ROOT,
-    DEFAULT_AVD_NAME,
-    JDK_ROOT,
-    SDK_ROOT,
-    USER_HOME,
-)
-from anvill.inspector import whpx_is_active
+import sys
+
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from config import get_target_image_info, load_config
+    from constants import (
+        AVD_ROOT,
+        DEFAULT_AVD_NAME,
+        JDK_ROOT,
+        SDK_ROOT,
+        USER_HOME,
+    )
+    from inspector import whpx_is_active
+except ImportError:
+    from src.config import get_target_image_info, load_config
+    from src.constants import (
+        AVD_ROOT,
+        DEFAULT_AVD_NAME,
+        JDK_ROOT,
+        SDK_ROOT,
+        USER_HOME,
+    )
+    from src.inspector import whpx_is_active
 
 
 def _log(msg: str) -> None:
     try:
-        from anvill.ui import log
+        from ui import log
         log(msg)
     except Exception:
         print(msg)
@@ -474,19 +491,21 @@ def create_avd(
     user_home: Path,
     env: dict[str, str],
 ) -> None:
-    """Creates base Android 16 AVD in the repo-local AVD directory."""
-    sys_img_dir = sdk_root / "system-images" / "android-36" / "google_apis" / "x86_64"
+    """Creates base AVD dynamically using the target image configured in config.json."""
+    cfg = load_config()
+    tinfo = get_target_image_info(cfg)
+    sys_img_dir = sdk_root / "system-images" / tinfo["api"] / tinfo["tag"] / tinfo["abi"]
     if not sys_img_dir.exists():
         _log(f"System image not found at {sys_img_dir}. Attempting direct package installation...")
         try:
-            install_sdk_package(sdk_root, "system-images;android-36;google_apis;x86_64", env)
+            install_sdk_package(sdk_root, tinfo["semi"], env)
         except Exception as exc:
             _log(f"Direct install failed: {exc}")
 
     if not sys_img_dir.exists():
         raise RuntimeError(
             f"System image not found at {sys_img_dir}. "
-            "The system-images package failed to download or install. "
+            f"The system-images package '{tinfo['semi']}' failed to download or install. "
             "Please ensure network access and rerun setup."
         )
 
@@ -495,14 +514,14 @@ def create_avd(
     avd_folder = avd_root / f"{avd_name}.avd"
     avd_folder.mkdir(parents=True, exist_ok=True)
 
-    _log(f"Creating portable AVD '{avd_name}' in {avd_folder}...")
+    _log(f"Creating portable AVD '{avd_name}' in {avd_folder} (target: {tinfo['api']})...")
     avd_cmd = _avdmanager_cmd(
         sdk_root,
         "create", "avd",
         "-n", avd_name,
-        "-k", "system-images;android-36;google_apis;x86_64",
-        "-g", "google_apis",
-        "-b", "x86_64",
+        "-k", tinfo["semi"],
+        "-g", tinfo["tag"],
+        "-b", tinfo["abi"],
         "--device", "pixel_7",
         "-c", "512M",
         "-p", str(avd_folder),
@@ -522,7 +541,7 @@ def create_avd(
         f"avd.ini.encoding=UTF-8\n"
         f"path={avd_folder}\n"
         f"path.rel=avds/{avd_name}.avd\n"
-        f"target=android-36\n"
+        f"target={tinfo['api']}\n"
     )
     ini_file.write_text(ini_content, encoding="utf-8")
 
@@ -559,8 +578,9 @@ def bootstrap(
     user_home: Path = USER_HOME,
     avd_name: str = DEFAULT_AVD_NAME,
     jdk_root: Path = JDK_ROOT,
+    auto_root: bool = True,
 ) -> SetupResult:
-    """Executes full automated bootstrap and returns SetupResult."""
+    """Executes full automated bootstrap, creates AVD, and performs initial root/hardening."""
     _log("[bold green]Starting Portable Android SDK bootstrap[/bold green]")
     _log(f"[dim]SDK Root:  {sdk_root}[/dim]")
     _log(f"[dim]AVD Root:  {avd_root}[/dim]")
@@ -617,6 +637,27 @@ def bootstrap(
         avd_created = True
     else:
         _log(f"AVD '{avd_name}' is already created in {avd_folder}.")
+
+    # 7. Automated First-Boot Root & Real-Device Provisioning
+    should_auto_root = auto_root and cfg.get("vm", {}).get("auto_root_on_setup", True)
+    if should_auto_root:
+        _log("\n[bold green]Executing First-Boot Automated Root & Real-Device Provisioning...[/bold green]")
+        _log("Booting emulator headlessly, injecting Magisk, debloating non-essentials & hardening device...")
+        try:
+            from rooting import root_avd
+            ret = root_avd(
+                repo_root=sdk_root.parent,
+                avd_name=avd_name,
+                restore=False,
+                debloat=True,
+                spoof=True,
+            )
+            if ret == 0:
+                _log("[bold green]✓ Initial setup with Magisk root, debloat & real-device hardening complete![/bold green]")
+            else:
+                _log(f"Notice: Root provisioning finished with exit code {ret}.")
+        except Exception as exc:
+            _log(f"Notice during first-boot root: {exc}. You can run root.bat manually at any time.")
 
     return SetupResult(
         sdk_root=sdk_root,

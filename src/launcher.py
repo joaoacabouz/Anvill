@@ -5,20 +5,31 @@ from __future__ import annotations
 import platform
 import shutil
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
-from anvill.adb import AdbManager
-from anvill.config import load_config
-from anvill.inspector import HostInspector
-from anvill.profiles import VMProfile
+_SRC_DIR = Path(__file__).resolve().parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+try:
+    from adb import AdbManager
+    from config import load_config
+    from inspector import HostInspector
+    from profiles import VMProfile
+except ImportError:
+    from src.adb import AdbManager
+    from src.config import load_config
+    from src.inspector import HostInspector
+    from src.profiles import VMProfile
 
 
 def _log(msg: str) -> None:
     try:
-        from anvill.ui import log
+        from ui import log
         log(msg)
     except Exception:
         print(msg)
@@ -224,3 +235,4 @@ class EmulatorLauncher:
             except Exception:
                 self.process.kill()
             _log("[dim]emulator terminated[/dim]")
+
