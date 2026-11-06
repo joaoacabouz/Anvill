@@ -18,3 +18,4 @@ if %errorlevel% equ 0 (
 echo [ERROR] Python not found. Please install Python 3.10+ and requirements.
 pause
 exit /b 1
+

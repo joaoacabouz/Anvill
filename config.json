@@ -13,7 +13,8 @@
       "enabled": false,
       "max_fps": 120,
       "video_bit_rate": "16M"
-    }
+    },
+    "theme": "emerald_matrix"
   },
   "debloat": {
     "enabled_by_default": true,
@@ -157,4 +158,3 @@
     ]
   }
 }
-

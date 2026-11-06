@@ -79,6 +79,7 @@ class LaunchFlags:
             args.append("-no-snapshot")
         if self.wipe_data:
             args.append("-wipe-data")
+        args.append("-no-skin")
 
         # Custom system / ramdisk / sysdir images
         if self.custom_system:
@@ -149,8 +150,8 @@ class EmulatorLauncher:
             args.extend(["-s", serial])
         return args
 
-    def launch(self, ready_timeout: int = 180) -> subprocess.Popen[bytes]:
-        """Launches the emulator and awaits device readiness."""
+    def start_process(self) -> subprocess.Popen[bytes]:
+        """Spawns the emulator process immediately without blocking on ADB wait."""
         args = [str(self.emulator_path)] + list(self.flags.build_args())
 
         _log(f"[bold cyan]Launching emulator:[/bold cyan] {self.emulator_path} (AVD: {self.flags.avd_name})")
@@ -167,6 +168,11 @@ class EmulatorLauncher:
         )
         self._output_thread = threading.Thread(target=self._stream_output, daemon=True)
         self._output_thread.start()
+        return self.process
+
+    def launch(self, ready_timeout: int = 180) -> subprocess.Popen[bytes]:
+        """Launches the emulator and awaits device readiness."""
+        self.start_process()
 
         _log("[cyan]Waiting for Android device to connect...[/cyan]")
         self.adb.wait_for_device(timeout=ready_timeout)
@@ -177,7 +183,7 @@ class EmulatorLauncher:
             _log("[yellow]Device not detected yet — emulator is booting...[/yellow]")
 
         if self.adb.wait_for_boot_completed(interval=2, timeout=120):
-            _log("[bold green]Android 16 Boot complete![/bold green]")
+            _log("[bold green]Android Boot complete![/bold green]")
         else:
             _log("[yellow]Boot polling timed out — emulator may still be initializing...[/yellow]")
 

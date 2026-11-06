@@ -198,3 +198,4 @@ class FramelessTitleBar(QWidget):
         if event.button() == Qt.LeftButton:
             self._toggle_maximize()
             event.accept()
+

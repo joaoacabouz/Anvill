@@ -235,3 +235,4 @@ class MainWindow(QMainWindow):
             self.setCursor(Qt.SizeHorCursor)
         else:
             self.setCursor(Qt.ArrowCursor)
+

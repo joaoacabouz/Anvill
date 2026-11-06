@@ -137,3 +137,4 @@ class SplashScreen(QWidget):
             else:
                 self.status_lbl.setText("First run detected. Preparing Setup Wizard...")
             QTimer.singleShot(400, lambda: self.splash_finished.emit(ready))
+

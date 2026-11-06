@@ -234,3 +234,4 @@ class SetupWizard(QWidget):
             self.status_lbl.setStyleSheet(f"color: {self.palette.danger}; font-weight: 700;")
             self.start_btn.setEnabled(True)
             self.start_btn.setText("Retry Setup")
+

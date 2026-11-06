@@ -84,18 +84,19 @@ class DeviceSpoof:
 
 
 def resolve_auto_profile(
-    inspector_or_ram: Any,
+    inspector_or_ram: Any = None,
     cpu: Any | None = None,
+    inspector: Any | None = None,
 ) -> VMProfile:
     """Calculates the 'auto' profile dynamically from host hardware."""
+    target_inspector = inspector if inspector is not None else inspector_or_ram
     if cpu is not None:
-        ram = inspector_or_ram
+        ram = target_inspector
         ram_total_gb = ram.total_mb / 1024.0
         logical = cpu.logical_threads
     else:
-        inspector = inspector_or_ram
-        ram_total_gb = inspector.ram.total_mb / 1024.0
-        logical = inspector.cpu.logical_threads
+        ram_total_gb = target_inspector.ram.total_mb / 1024.0
+        logical = target_inspector.cpu.logical_threads
 
     if ram_total_gb >= 28:
         ram_mb, heap_mb = 12288, 1024

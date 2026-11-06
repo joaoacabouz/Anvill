@@ -457,3 +457,4 @@ def generate_qss(palette: ThemePalette) -> str:
         font-size: 12px;
     }}
     """
+

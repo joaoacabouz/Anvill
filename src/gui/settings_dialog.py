@@ -149,3 +149,4 @@ class SettingsDialog(QDialog):
             self.accept()
         except Exception as exc:
             QMessageBox.critical(self, "Save Error", f"Failed to save settings:\n{exc}")
+

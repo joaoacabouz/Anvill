@@ -11,8 +11,8 @@ import time
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from PySide6.QtCore import QPoint, QSize, QThread, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QFont, QIcon, QPainter, QPixmap
+from PySide6.QtCore import QPoint, QRect, QSize, QThread, QTimer, Qt, Signal
+from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QFont, QIcon, QPainter, QPixmap, QWindow
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QSplitter,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -36,40 +36,137 @@ from launcher import EmulatorLauncher, LaunchFlags, pick_gpu_mode
 from profiles import get_hardware_profile, get_spoof_profile, load_profiles
 
 
-# Win32 user32 imports for window embedding
+# ---------------------------------------------------------------------------
+# Win32 Native Helpers for External Window Reparenting & Embedding
+# ---------------------------------------------------------------------------
+
 if platform.system() == "Windows":
     user32 = ctypes.windll.user32
     WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+
+    # Setup 64-bit safe prototypes to avoid ctypes OverflowError
+    SetWindowLongPtr = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
+    SetWindowLongPtr.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+    SetWindowLongPtr.restype = ctypes.c_ssize_t
+
+    GetWindowLongPtr = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
+    GetWindowLongPtr.argtypes = [wintypes.HWND, ctypes.c_int]
+    GetWindowLongPtr.restype = ctypes.c_ssize_t
+
+    # Win32 style constants
+    GWL_STYLE = -16
+    WS_POPUP = 0x80000000
+    WS_CAPTION = 0x00C00000
+    WS_THICKFRAME = 0x00040000
+    WS_MINIMIZEBOX = 0x00020000
+    WS_MAXIMIZEBOX = 0x00010000
+    WS_SYSMENU = 0x00080000
+    WS_CHILD = 0x40000000
+    WS_VISIBLE = 0x10000000
+
+    SWP_NOZORDER = 0x0004
+    SWP_FRAMECHANGED = 0x0020
+    SWP_SHOWWINDOW = 0x0040
+    SWP_NOACTIVATE = 0x0010
 else:
     user32 = None
 
 
-def find_emulator_window(avd_name: str) -> Optional[int]:
-    """Finds the HWND of the running Android Emulator on Windows."""
+def find_emulator_window(avd_name: str, target_pid: Optional[int] = None) -> Optional[int]:
+    """Finds the HWND of the running Android Emulator window on Windows.
+
+    Filters out Anvill's own process and hidden/helper windows.
+    Matches window title patterns like 'Android Emulator - Android16_Pro:5554'.
+    """
     if not user32:
         return None
 
-    matches: List[Tuple[int, str]] = []
+    my_pid = os.getpid()
+    matches: List[Tuple[int, str, int]] = []
 
     def enum_windows_callback(hwnd: int, lparam: int) -> bool:
-        if user32.IsWindowVisible(hwnd):
-            length = user32.GetWindowTextLengthW(hwnd)
-            if length > 0:
-                buf = ctypes.create_unicode_buffer(length + 1)
-                user32.GetWindowTextW(hwnd, buf, length + 1)
-                title = buf.value
-                # Match "Android Emulator" or avd_name or "qemu"
-                if ("android emulator" in title.lower()) or (avd_name.lower() in title.lower()):
-                    matches.append((hwnd, title))
+        if not user32.IsWindowVisible(hwnd):
+            return True
+
+        # Never match Anvill itself
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value == my_pid:
+            return True
+
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length > 0:
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            title = buf.value.strip()
+            title_lower = title.lower()
+
+            # Must have non-trivial size (ignore 0x0 or offscreen dummy windows)
+            rect = wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            w = rect.right - rect.left
+            h = rect.bottom - rect.top
+            if w < 100 or h < 100:
+                return True
+
+            # Match criteria
+            if target_pid and pid.value == target_pid:
+                matches.append((hwnd, title, 100))
+            elif "android emulator" in title_lower:
+                priority = 90 if avd_name.lower() in title_lower else 75
+                matches.append((hwnd, title, priority))
+            elif avd_name.lower() in title_lower and "anvill" not in title_lower:
+                matches.append((hwnd, title, 60))
+
         return True
 
     cb = WNDENUMPROC(enum_windows_callback)
     user32.EnumWindows(cb, 0)
 
     if matches:
+        matches.sort(key=lambda x: x[2], reverse=True)
         return matches[0][0]
     return None
 
+
+def strip_and_embed_window(child_hwnd: int, parent_widget: QWidget) -> Optional[QWidget]:
+    """Strips outer OS window titlebar/borders and wraps HWND inside a PySide6 QWidget container."""
+    if not user32 or not child_hwnd:
+        return None
+
+    try:
+        # Strip top-level borders, caption and popups
+        style = GetWindowLongPtr(child_hwnd, GWL_STYLE)
+        style &= ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU)
+        style |= (WS_CHILD | WS_VISIBLE)
+        SetWindowLongPtr(child_hwnd, GWL_STYLE, ctypes.c_ssize_t(style).value)
+
+        # Wrap HWND into Qt's native window abstraction
+        qwin = QWindow.fromWinId(child_hwnd)
+        container = QWidget.createWindowContainer(qwin, parent_widget)
+        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # Reparent and inform Windows of style change
+        w = max(100, parent_widget.width())
+        h = max(100, parent_widget.height())
+        user32.SetWindowPos(
+            child_hwnd,
+            0,
+            0,
+            0,
+            w,
+            h,
+            SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+        )
+        return container
+    except Exception as exc:
+        print(f"[Anvill] Error embedding window {child_hwnd}: {exc}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Background Boot Worker
+# ---------------------------------------------------------------------------
 
 class EmulatorBootWorker(QThread):
     """Starts the emulator process and awaits boot completion in background."""
@@ -103,9 +200,6 @@ class EmulatorBootWorker(QThread):
             profile = get_hardware_profile(profiles_data, self.hw_profile, inspector=inspector)
             gpu_mode = pick_gpu_mode(inspector, safe_gpu=self.safe_gpu)
             spoof = get_spoof_profile(profiles_data, self.spoof_profile)
-
-            cfg = load_config()
-            avd_cfg = AVD_ROOT / f"{self.avd_name}.avd" / "config.ini"
 
             flags = LaunchFlags(
                 profile=profile,
@@ -143,6 +237,10 @@ class EmulatorBootWorker(QThread):
             self.booted_signal.emit(False, str(exc))
 
 
+# ---------------------------------------------------------------------------
+# Player View (Main VM Container & Controller)
+# ---------------------------------------------------------------------------
+
 class PlayerView(QWidget):
     """Main Android Player container with embedded emulator viewport and side control bar."""
 
@@ -160,37 +258,40 @@ class PlayerView(QWidget):
         self.adb = AdbManager()
         self.boot_worker: Optional[EmulatorBootWorker] = None
         self.embedded_hwnd: Optional[int] = None
+        self.embedded_container: Optional[QWidget] = None
         self._embed_timer: Optional[QTimer] = None
+        self._detect_timer: Optional[QTimer] = None
 
         self.setAcceptDrops(True)
         self._setup_ui()
         self.update_palette(palette)
+        self._start_desktop_detection_timer()
 
     def _setup_ui(self) -> None:
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(12, 12, 12, 12)
         main_layout.setSpacing(12)
 
-        # 1. Central Viewport Area (Stacked: Dashboard -> Booting -> Embedded Container)
+        # Central Viewport Area (Stacked: Dashboard -> Player Container)
         self.stack = QStackedWidget()
 
         # Page 0: Idle Dashboard
         self.dashboard_page = self._create_dashboard_page()
         self.stack.addWidget(self.dashboard_page)
 
-        # Page 1: Booting Page
-        self.booting_page = self._create_booting_page()
-        self.stack.addWidget(self.booting_page)
-
-        # Page 2: Active Player Container
+        # Page 1: Active Player Container (Viewport + Overlays)
         self.player_page = self._create_player_container_page()
         self.stack.addWidget(self.player_page)
 
         main_layout.addWidget(self.stack, stretch=1)
 
-        # 2. Side Toolbar Controls (Like Emulator Side Bar)
+        # Side Toolbar Controls (Native Android player buttons)
         self.toolbar = self._create_side_toolbar()
         main_layout.addWidget(self.toolbar)
+
+    # -----------------------------------------------------------------------
+    # Page 0: Idle Dashboard
+    # -----------------------------------------------------------------------
 
     def _create_dashboard_page(self) -> QWidget:
         page = QWidget()
@@ -200,15 +301,15 @@ class PlayerView(QWidget):
 
         card = QWidget()
         card.setProperty("class", "SurfaceCard")
-        card.setFixedSize(620, 440)
+        card.setFixedSize(640, 480)
         c_layout = QVBoxLayout(card)
-        c_layout.setContentsMargins(36, 30, 36, 30)
+        c_layout.setContentsMargins(36, 28, 36, 28)
         c_layout.setSpacing(14)
 
         # Icon & Title
         title_box = QHBoxLayout()
         icon = QLabel("📱")
-        icon.setFont(QFont("Segoe UI Emoji", 32))
+        icon.setFont(QFont("Segoe UI Emoji", 30))
         title = QLabel(f"Android Virtual Machine")
         title.setFont(QFont("Segoe UI", 18, QFont.Bold))
         title_box.addWidget(icon)
@@ -216,11 +317,29 @@ class PlayerView(QWidget):
         title_box.addStretch()
         c_layout.addLayout(title_box)
 
-        desc = QLabel("Ready to start emulator session with real-device hardware emulation.")
+        desc = QLabel("Select configuration profile and start the virtual machine player session.")
         desc.setStyleSheet("color: #8B949E; font-size: 13px;")
         c_layout.addWidget(desc)
 
-        c_layout.addSpacing(10)
+        # Active Running Detection Banner (Shows if emulator is already running outside)
+        self.detected_banner = QWidget()
+        self.detected_banner.setProperty("class", "ElevatedCard")
+        self.detected_banner.setStyleSheet("background-color: rgba(0, 229, 255, 0.08); border: 1px solid #00E5FF; border-radius: 8px;")
+        self.detected_banner.setVisible(False)
+        db_layout = QHBoxLayout(self.detected_banner)
+        db_layout.setContentsMargins(12, 8, 12, 8)
+
+        self.detected_lbl = QLabel("⚡ Running Emulator window detected on desktop!")
+        self.detected_lbl.setStyleSheet("color: #00E5FF; font-weight: 600; font-size: 12px;")
+        self.attach_btn = QPushButton("Dock Inside App")
+        self.attach_btn.setProperty("class", "PrimaryButton")
+        self.attach_btn.setFixedHeight(28)
+        self.attach_btn.clicked.connect(self._attach_detected_window)
+        db_layout.addWidget(self.detected_lbl, stretch=1)
+        db_layout.addWidget(self.attach_btn)
+        c_layout.addWidget(self.detected_banner)
+
+        c_layout.addSpacing(6)
 
         # Options Box
         opts_box = QVBoxLayout()
@@ -249,7 +368,7 @@ class PlayerView(QWidget):
         opts_box.addLayout(row2)
 
         c_layout.addLayout(opts_box)
-        c_layout.addSpacing(16)
+        c_layout.addSpacing(12)
 
         # Big Launch Button
         self.launch_btn = QPushButton("▶ Launch Android Emulator")
@@ -261,38 +380,9 @@ class PlayerView(QWidget):
         layout.addWidget(card)
         return page
 
-    def _create_booting_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setAlignment(Qt.AlignCenter)
-        layout.setSpacing(16)
-
-        card = QWidget()
-        card.setProperty("class", "SurfaceCard")
-        card.setFixedSize(500, 280)
-        c_layout = QVBoxLayout(card)
-        c_layout.setAlignment(Qt.AlignCenter)
-        c_layout.setContentsMargins(30, 30, 30, 30)
-        c_layout.setSpacing(12)
-
-        spinner_lbl = QLabel("⚡")
-        spinner_lbl.setFont(QFont("Segoe UI Emoji", 36))
-        spinner_lbl.setAlignment(Qt.AlignCenter)
-
-        boot_title = QLabel("Booting Android Emulator...")
-        boot_title.setFont(QFont("Segoe UI", 16, QFont.Bold))
-        boot_title.setAlignment(Qt.AlignCenter)
-
-        self.boot_status_lbl = QLabel("Starting QEMU virtualization...")
-        self.boot_status_lbl.setStyleSheet("color: #00E5FF; font-weight: 600; font-size: 13px;")
-        self.boot_status_lbl.setAlignment(Qt.AlignCenter)
-
-        c_layout.addWidget(spinner_lbl)
-        c_layout.addWidget(boot_title)
-        c_layout.addWidget(self.boot_status_lbl)
-
-        layout.addWidget(card)
-        return page
+    # -----------------------------------------------------------------------
+    # Page 1: Active Player Container
+    # -----------------------------------------------------------------------
 
     def _create_player_container_page(self) -> QWidget:
         page = QWidget()
@@ -300,32 +390,58 @@ class PlayerView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Viewport Frame
+        # Viewport Frame with Native Window attribute for Win32 child reparenting
         self.viewport_frame = QWidget()
+        self.viewport_frame.setAttribute(Qt.WA_NativeWindow, True)
         self.viewport_frame.setProperty("class", "SurfaceCard")
-        self.viewport_frame.setStyleSheet("background-color: #000000; border-radius: 10px;")
+        self.viewport_frame.setStyleSheet("background-color: #050505; border-radius: 10px;")
 
-        # Active placeholder banner inside viewport
-        vf_layout = QVBoxLayout(self.viewport_frame)
-        vf_layout.setAlignment(Qt.AlignCenter)
-        self.embed_notice = QLabel("📱 Android Emulator Active\n\n(Window Hooked / Controlled)")
-        self.embed_notice.setFont(QFont("Segoe UI", 14, QFont.Bold))
-        self.embed_notice.setStyleSheet("color: #8B949E; text-align: center;")
-        self.embed_notice.setAlignment(Qt.AlignCenter)
-        vf_layout.addWidget(self.embed_notice)
+        self.viewport_layout = QVBoxLayout(self.viewport_frame)
+        self.viewport_layout.setContentsMargins(0, 0, 0, 0)
+        self.viewport_layout.setSpacing(0)
+
+        # Boot / Loading Overlay inside Viewport
+        self.boot_overlay = QWidget(self.viewport_frame)
+        self.boot_overlay.setStyleSheet("background-color: transparent;")
+        bo_layout = QVBoxLayout(self.boot_overlay)
+        bo_layout.setAlignment(Qt.AlignCenter)
+        bo_layout.setSpacing(12)
+
+        spinner = QLabel("⚡")
+        spinner.setFont(QFont("Segoe UI Emoji", 38))
+        spinner.setAlignment(Qt.AlignCenter)
+
+        self.boot_title_lbl = QLabel("Booting Android Emulator...")
+        self.boot_title_lbl.setFont(QFont("Segoe UI", 16, QFont.Bold))
+        self.boot_title_lbl.setStyleSheet("color: #FFFFFF;")
+        self.boot_title_lbl.setAlignment(Qt.AlignCenter)
+
+        self.boot_status_lbl = QLabel("Starting QEMU engine & hooking display...")
+        self.boot_status_lbl.setStyleSheet("color: #00E5FF; font-weight: 600; font-size: 13px;")
+        self.boot_status_lbl.setAlignment(Qt.AlignCenter)
+
+        bo_layout.addWidget(spinner)
+        bo_layout.addWidget(self.boot_title_lbl)
+        bo_layout.addWidget(self.boot_status_lbl)
+
+        self.viewport_layout.addWidget(self.boot_overlay)
 
         layout.addWidget(self.viewport_frame)
         return page
 
+    # -----------------------------------------------------------------------
+    # Side Toolbar
+    # -----------------------------------------------------------------------
+
     def _create_side_toolbar(self) -> QWidget:
         toolbar = QWidget()
         toolbar.setProperty("class", "ElevatedCard")
-        toolbar.setFixedWidth(52)
+        toolbar.setFixedWidth(54)
         t_layout = QVBoxLayout(toolbar)
         t_layout.setContentsMargins(6, 12, 6, 12)
         t_layout.setSpacing(8)
 
-        # Standard Android Emulator Control Buttons
+        # Hardware & utility controls
         self.power_btn = self._make_tool_btn("⏻", "Power Button (Lock / Unlock)", self._on_power)
         self.vol_up_btn = self._make_tool_btn("🔊", "Volume Up", self._on_vol_up)
         self.vol_down_btn = self._make_tool_btn("🔉", "Volume Down", self._on_vol_down)
@@ -342,7 +458,7 @@ class PlayerView(QWidget):
 
         t_layout.addStretch()
 
-        # Android Navigation Buttons
+        # Android Navigation controls
         self.back_btn = self._make_tool_btn("◀", "Back", self._on_back)
         self.home_btn = self._make_tool_btn("⚪", "Home", self._on_home)
         self.recents_btn = self._make_tool_btn("⏹", "Recent Apps", self._on_recents)
@@ -373,8 +489,51 @@ class PlayerView(QWidget):
     def update_palette(self, palette: ThemePalette) -> None:
         self.palette = palette
 
+    # -----------------------------------------------------------------------
+    # Detection & Embedding Operations
+    # -----------------------------------------------------------------------
+
+    def _start_desktop_detection_timer(self) -> None:
+        """Periodically inspects if an emulator window is already running on the desktop."""
+        self._detect_timer = QTimer(self)
+        self._detect_timer.setInterval(1500)
+        self._detect_timer.timeout.connect(self._check_for_running_emulator)
+        self._detect_timer.start()
+
+    def _check_for_running_emulator(self) -> None:
+        if self.embedded_hwnd or self.stack.currentIndex() != 0:
+            return
+
+        hwnd = find_emulator_window(self.avd_name)
+        if hwnd:
+            self.detected_banner.setVisible(True)
+        else:
+            self.detected_banner.setVisible(False)
+
+    def _attach_detected_window(self) -> None:
+        """Docks an existing running emulator window from the desktop into the app container."""
+        hwnd = find_emulator_window(self.avd_name)
+        if not hwnd:
+            QMessageBox.warning(self, "Not Found", "Could not locate running Android Emulator window.")
+            return
+
+        self._embed_hwnd(hwnd)
+        self.stack.setCurrentIndex(1)
+        self.status_changed.emit("running")
+
     def _start_emulator(self) -> None:
-        self.stack.setCurrentIndex(1)  # Booting
+        """Starts the emulator and immediately switches to the viewport container."""
+        # If already running on desktop, dock it directly
+        existing_hwnd = find_emulator_window(self.avd_name)
+        if existing_hwnd:
+            self._attach_detected_window()
+            return
+
+        # Switch immediately to viewport page with booting overlay
+        self.boot_overlay.setVisible(True)
+        self.boot_title_lbl.setText("Booting Android Emulator...")
+        self.boot_status_lbl.setText("Initializing QEMU engine...")
+        self.stack.setCurrentIndex(1)
         self.status_changed.emit("booting")
 
         hw = self.hw_combo.currentText()
@@ -389,55 +548,91 @@ class PlayerView(QWidget):
         self.boot_worker.booted_signal.connect(self._on_boot_result)
         self.boot_worker.start()
 
-        # Start background timer looking for the emulator window to embed
-        self._start_window_embedding_poll()
+        # Start fast polling timer (every 150ms) to capture the window as soon as QEMU renders it
+        self._start_fast_embedding_poll()
 
-    def _on_boot_result(self, success: bool, err_msg: str) -> None:
-        if success:
-            self.stack.setCurrentIndex(2)  # Active Player
-            self.status_changed.emit("running")
-        else:
-            QMessageBox.critical(self, "Emulator Error", f"Failed to start emulator:\n{err_msg}")
-            self.stack.setCurrentIndex(0)
-            self.status_changed.emit("offline")
-
-    def _start_window_embedding_poll(self) -> None:
+    def _start_fast_embedding_poll(self) -> None:
+        if self._embed_timer:
+            self._embed_timer.stop()
         self._embed_timer = QTimer(self)
-        self._embed_timer.setInterval(1000)
+        self._embed_timer.setInterval(150)
         self._embed_timer.timeout.connect(self._try_embed_window)
         self._embed_timer.start()
 
     def _try_embed_window(self) -> None:
         if not user32 or self.embedded_hwnd:
-            return
-
-        hwnd = find_emulator_window(self.avd_name)
-        if hwnd:
-            self.embedded_hwnd = hwnd
             if self._embed_timer:
                 self._embed_timer.stop()
+            return
 
-            # Embed into container viewport
-            container_id = int(self.viewport_frame.winId())
-            user32.SetParent(hwnd, container_id)
+        target_pid = self.boot_worker.proc.pid if (self.boot_worker and self.boot_worker.proc) else None
+        hwnd = find_emulator_window(self.avd_name, target_pid=target_pid)
+        if hwnd:
+            self._embed_hwnd(hwnd)
 
-            # Resize emulator window to fit container
-            rect = self.viewport_frame.rect()
-            user32.MoveWindow(hwnd, 0, 0, rect.width(), rect.height(), True)
-            self.embed_notice.setVisible(False)
+    def _embed_hwnd(self, hwnd: int) -> None:
+        """Embeds the given HWND into the viewport frame."""
+        if self.embedded_hwnd:
+            return
+
+        self.embedded_hwnd = hwnd
+        if self._embed_timer:
+            self._embed_timer.stop()
+
+        container = strip_and_embed_window(hwnd, self.viewport_frame)
+        if container:
+            self.embedded_container = container
+            self.viewport_layout.addWidget(container)
+            self.boot_overlay.setVisible(False)
+            self._sync_geometry()
+
+    def _sync_geometry(self) -> None:
+        """Ensures the embedded child window matches viewport bounds exactly."""
+        if user32 and self.embedded_hwnd and self.viewport_frame:
+            w = max(100, self.viewport_frame.width())
+            h = max(100, self.viewport_frame.height())
+            user32.SetWindowPos(
+                self.embedded_hwnd,
+                0,
+                0,
+                0,
+                w,
+                h,
+                SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+            )
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        # Keep embedded window sized to viewport
-        if user32 and self.embedded_hwnd:
-            rect = self.viewport_frame.rect()
-            user32.MoveWindow(self.embedded_hwnd, 0, 0, rect.width(), rect.height(), True)
+        self._sync_geometry()
+
+    def _on_boot_result(self, success: bool, err_msg: str) -> None:
+        if success:
+            self.status_changed.emit("running")
+            # If not yet embedded, perform a final sweep
+            if not self.embedded_hwnd:
+                self._try_embed_window()
+        else:
+            QMessageBox.critical(self, "Emulator Error", f"Failed to start emulator:\n{err_msg}")
+            self._cleanup_embedded_session()
+            self.stack.setCurrentIndex(0)
+            self.status_changed.emit("offline")
+
+    def _cleanup_embedded_session(self) -> None:
+        if self._embed_timer:
+            self._embed_timer.stop()
+        if self.embedded_container:
+            self.viewport_layout.removeWidget(self.embedded_container)
+            self.embedded_container.setParent(None)
+            self.embedded_container.deleteLater()
+            self.embedded_container = None
+        self.embedded_hwnd = None
+        self.boot_overlay.setVisible(True)
 
     def _stop_emulator(self) -> None:
         reply = QMessageBox.question(
             self,
-            "Shutdown",
-            "Are you sure you want to shut down the Android emulator?",
+            "Shutdown VM",
+            "Are you sure you want to shut down the Android virtual machine?",
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
@@ -447,11 +642,14 @@ class PlayerView(QWidget):
                     self.boot_worker.proc.terminate()
                 except Exception:
                     pass
-            self.embedded_hwnd = None
+            self._cleanup_embedded_session()
             self.stack.setCurrentIndex(0)
             self.status_changed.emit("offline")
 
-    # Android Key Controls
+    # -----------------------------------------------------------------------
+    # Android Control Buttons
+    # -----------------------------------------------------------------------
+
     def _on_power(self) -> None:
         self.adb.run("shell", "input", "keyevent", "26")
 
@@ -462,7 +660,6 @@ class PlayerView(QWidget):
         self.adb.run("shell", "input", "keyevent", "25")
 
     def _on_rotate(self) -> None:
-        # Toggle user rotation between 0 and 1
         res = self.adb.run("shell", "settings", "get", "system", "user_rotation")
         curr = res.stdout.strip()
         new_rot = "1" if curr == "0" else "0"
@@ -484,7 +681,6 @@ class PlayerView(QWidget):
         filename = f"screenshot_{int(time.time())}.png"
         filepath = out_dir / filename
 
-        # Grab screenshot through adb
         try:
             with open(filepath, "wb") as f:
                 subprocess.run(
@@ -514,7 +710,11 @@ class PlayerView(QWidget):
         if res.returncode == 0:
             QMessageBox.information(self, "APK Installed", f"Successfully installed:\n{apk.name}")
         else:
-            QMessageBox.warning(self, "Installation Failed", f"Could not install {apk.name}:\n{res.stderr.strip() or res.stdout.strip()}")
+            QMessageBox.warning(
+                self,
+                "Installation Failed",
+                f"Could not install {apk.name}:\n{res.stderr.strip() or res.stdout.strip()}",
+            )
 
     # Drag & Drop APK support
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:

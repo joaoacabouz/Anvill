@@ -22,3 +22,4 @@ if %errorlevel% neq 0 (
 echo.
 echo Build complete.
 pause
+
