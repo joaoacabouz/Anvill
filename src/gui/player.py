@@ -682,9 +682,26 @@ class PlayerView(QWidget):
             user32.ShowWindow(self.embedded_hwnd, SW_HIDE)
             return
 
-        vp_pt = self.viewport_frame.mapToGlobal(QPoint(0, 0))
-        vw = max(100, self.viewport_frame.width())
-        vh = max(100, self.viewport_frame.height())
+        vp_hwnd = int(self.viewport_frame.winId()) if hasattr(self, "viewport_frame") else 0
+        pt = wintypes.POINT(0, 0)
+        rect = wintypes.RECT()
+
+        # Retrieve exact physical pixels from Win32 to prevent DPI-scaling offsets (e.g. 125%/150%)
+        if (
+            vp_hwnd
+            and user32.ClientToScreen(vp_hwnd, ctypes.byref(pt))
+            and user32.GetClientRect(vp_hwnd, ctypes.byref(rect))
+        ):
+            vw = max(100, rect.right - rect.left)
+            vh = max(100, rect.bottom - rect.top)
+            start_x = pt.x
+            start_y = pt.y
+        else:
+            vp_pt = self.viewport_frame.mapToGlobal(QPoint(0, 0))
+            vw = max(100, self.viewport_frame.width())
+            vh = max(100, self.viewport_frame.height())
+            start_x = vp_pt.x()
+            start_y = vp_pt.y()
 
         # Tablet 16:9 widescreen aspect ratio (landscape horizontal)
         ratio = (16.0 / 9.0) if self.is_landscape else (9.0 / 16.0)
@@ -698,8 +715,8 @@ class PlayerView(QWidget):
         offset_x = (vw - target_w) // 2
         offset_y = (vh - target_h) // 2
 
-        target_x = vp_pt.x() + offset_x
-        target_y = vp_pt.y() + offset_y
+        target_x = start_x + offset_x
+        target_y = start_y + offset_y
 
         user32.SetWindowPos(
             self.embedded_hwnd,
