@@ -79,7 +79,8 @@ class LaunchFlags:
             args.append("-no-snapshot")
         if self.wipe_data:
             args.append("-wipe-data")
-        args.append("-no-skin")
+        # Enforce exact resolution skin (e.g. 1920x1080) for horizontal tablet display
+        args.extend(["-skin", f"{self.profile.width}x{self.profile.height}"])
 
         # Custom system / ramdisk / sysdir images
         if self.custom_system:

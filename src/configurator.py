@@ -75,6 +75,8 @@ class AvdConfig:
         self["hw.initialOrientation"] = "landscape"
         self["skin.name"] = f"{profile.width}x{profile.height}"
         self["skin.path"] = f"{profile.width}x{profile.height}"
+        self["hw.device.name"] = "SM-X910"
+        self["hw.device.manufacturer"] = "samsung"
 
     def atomic_write(self) -> None:
         """Writes the file atomically (UTF-8, no BOM)."""
@@ -185,6 +187,9 @@ class AvdConfigurator:
         config = self.load()
         config.update_from(profile, gpu_mode)
         config.atomic_write()
+        hw_file = self.avd_dir / "hardware-qemu.ini"
+        if hw_file.exists():
+            hw_file.unlink(missing_ok=True)
         self.ensure_hw_qemu_ini(profile.cpu_cores, profile.ram_mb)
         return config
 

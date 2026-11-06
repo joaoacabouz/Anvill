@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from adb import AdbManager
 from config import load_config
+from configurator import AvdConfigurator
 from constants import AVD_ROOT, DEFAULT_AVD_NAME, REPO_ROOT, SDK_ROOT
 from gui.theme import ThemePalette
 from inspector import HostInspector
@@ -70,10 +71,13 @@ else:
     user32 = None
 
 
-def find_emulator_windows(avd_name: str, target_pid: Optional[int] = None) -> Tuple[Optional[int], Optional[int]]:
-    """Locates the emulator display HWND and any auxiliary floating toolbar HWND."""
+def find_emulator_windows(
+    avd_name: str,
+    target_pid: Optional[int] = None,
+) -> Tuple[Optional[int], List[int]]:
+    """Locates the emulator display HWND and any auxiliary floating toolbar HWNDs."""
     if not user32:
-        return None, None
+        return None, []
 
     my_pid = os.getpid()
     display_candidates: List[Tuple[int, str, int]] = []
@@ -103,7 +107,7 @@ def find_emulator_windows(avd_name: str, target_pid: Optional[int] = None) -> Tu
         h = rect.bottom - rect.top
 
         # Floating toolbars or small utility windows created by QEMU
-        if ("tool" in cls.lower() or "savebits" in cls.lower() or (w < 100 and h > 100)) and (
+        if ("tool" in cls.lower() or "savebits" in cls.lower() or (w < 120 and h > 50)) and (
             "emulator" in title.lower() or (target_pid and pid.value == target_pid)
         ):
             toolbars.append(hwnd)
@@ -131,8 +135,7 @@ def find_emulator_windows(avd_name: str, target_pid: Optional[int] = None) -> Tu
         display_candidates.sort(key=lambda x: x[2], reverse=True)
         display_hwnd = display_candidates[0][0]
 
-    toolbar_hwnd = toolbars[0] if toolbars else None
-    return display_hwnd, toolbar_hwnd
+    return display_hwnd, toolbars
 
 
 def embed_and_reparent_display(child_hwnd: int, parent_hwnd: int) -> bool:
@@ -141,16 +144,41 @@ def embed_and_reparent_display(child_hwnd: int, parent_hwnd: int) -> bool:
         return False
 
     try:
+        # Strip popup & window decorations from style
         style = GetWindowLongPtr(child_hwnd, GWL_STYLE)
         style &= ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU)
         style |= (WS_CHILD | WS_VISIBLE)
         SetWindowLongPtr(child_hwnd, GWL_STYLE, ctypes.c_ssize_t(style).value)
+
+        # Strip taskbar & border decorations from extended style
+        GWL_EXSTYLE = -20
+        WS_EX_APPWINDOW = 0x00040000
+        WS_EX_WINDOWEDGE = 0x00000100
+        ex_style = GetWindowLongPtr(child_hwnd, GWL_EXSTYLE)
+        ex_style &= ~(WS_EX_APPWINDOW | WS_EX_WINDOWEDGE)
+        SetWindowLongPtr(child_hwnd, GWL_EXSTYLE, ctypes.c_ssize_t(ex_style).value)
 
         user32.SetParent(child_hwnd, parent_hwnd)
         return True
     except Exception as exc:
         print(f"[Anvill] Error embedding HWND {child_hwnd}: {exc}")
         return False
+
+
+class ViewportContainer(QWidget):
+    """Container widget hosting the embedded Win32 Android Emulator window with dynamic resize notification."""
+
+    resized = Signal()
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_NativeWindow, True)
+        self.setObjectName("PlayerViewportFrame")
+        self.setStyleSheet("background-color: #000000; border-radius: 6px;")
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.resized.emit()
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +218,17 @@ class EmulatorBootWorker(QThread):
             gpu_mode = pick_gpu_mode(inspector, safe_gpu=self.safe_gpu)
             spoof = get_spoof_profile(profiles_data, self.spoof_profile)
 
+            # Pre-apply tablet landscape settings to AVD config.ini before booting
+            self.status_signal.emit("Configuring AVD tablet landscape profile...")
+            configurator = AvdConfigurator(self.avd_name)
+            configurator.apply(profile, gpu_mode)
+
+            # Clear legacy phone snapshot if it exists so AVD boots cleanly in tablet mode
+            snap_dir = configurator.avd_dir / "snapshots"
+            if snap_dir.exists():
+                import shutil
+                shutil.rmtree(snap_dir, ignore_errors=True)
+
             flags = LaunchFlags(
                 profile=profile,
                 gpu_mode=gpu_mode,
@@ -217,12 +256,11 @@ class EmulatorBootWorker(QThread):
                 self.booted_signal.emit(False, "Android boot timed out.")
                 return
 
-            # Enforce 16:9 Tablet Landscape resolution and orientation in Android OS
+            # Enforce 16:9 Tablet Landscape resolution in Android OS
             self.status_signal.emit("Configuring Tablet Landscape Display...")
             self.adb.run("shell", "wm", "size", f"{profile.width}x{profile.height}")
             self.adb.run("shell", "wm", "density", str(profile.dpi))
             self.adb.run("shell", "settings", "put", "system", "accelerometer_rotation", "0")
-            self.adb.run("shell", "settings", "put", "system", "user_rotation", "0")
 
             self.status_signal.emit("Injecting device spoofing & anti-detection...")
             self.adb.apply_spoof(spoof)
@@ -384,11 +422,9 @@ class PlayerView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Viewport Frame with native Win32 window attribute
-        self.viewport_frame = QWidget()
-        self.viewport_frame.setAttribute(Qt.WA_NativeWindow, True)
-        self.viewport_frame.setObjectName("PlayerViewportFrame")
-        self.viewport_frame.setStyleSheet("background-color: #000000; border-radius: 6px;")
+        # Viewport Frame with native Win32 window attribute and resize notification
+        self.viewport_frame = ViewportContainer()
+        self.viewport_frame.resized.connect(self._sync_geometry)
 
         vf_layout = QVBoxLayout(self.viewport_frame)
         vf_layout.setAlignment(Qt.AlignCenter)
@@ -527,17 +563,17 @@ class PlayerView(QWidget):
             self.detected_banner.setVisible(False)
 
     def _attach_detected_window(self) -> None:
-        disp_hwnd, tb_hwnd = find_emulator_windows(self.avd_name)
+        disp_hwnd, toolbars = find_emulator_windows(self.avd_name)
         if not disp_hwnd:
             QMessageBox.warning(self, "Not Found", "Could not locate running Android Emulator window.")
             return
 
-        self._embed_hwnd(disp_hwnd, tb_hwnd)
+        self._embed_hwnd(disp_hwnd, toolbars)
         self.stack.setCurrentIndex(1)
         self.status_changed.emit("running")
 
     def _start_emulator(self) -> None:
-        disp_hwnd, tb_hwnd = find_emulator_windows(self.avd_name)
+        disp_hwnd, toolbars = find_emulator_windows(self.avd_name)
         if disp_hwnd:
             self._attach_detected_window()
             return
@@ -578,19 +614,20 @@ class PlayerView(QWidget):
             return
 
         target_pid = self.boot_worker.proc.pid if (self.boot_worker and self.boot_worker.proc) else None
-        disp_hwnd, tb_hwnd = find_emulator_windows(self.avd_name, target_pid=target_pid)
+        disp_hwnd, toolbars = find_emulator_windows(self.avd_name, target_pid=target_pid)
         if disp_hwnd:
-            self._embed_hwnd(disp_hwnd, tb_hwnd)
+            self._embed_hwnd(disp_hwnd, toolbars)
 
-    def _embed_hwnd(self, disp_hwnd: int, tb_hwnd: Optional[int] = None) -> None:
+    def _embed_hwnd(self, disp_hwnd: int, toolbars: Optional[List[int]] = None) -> None:
         if self.embedded_hwnd:
             return
 
         if self._embed_timer:
             self._embed_timer.stop()
 
-        if user32 and tb_hwnd:
-            user32.ShowWindow(tb_hwnd, SW_HIDE)
+        if user32 and toolbars:
+            for tb in toolbars:
+                user32.ShowWindow(tb, SW_HIDE)
 
         parent_hwnd = int(self.viewport_frame.winId())
         if embed_and_reparent_display(disp_hwnd, parent_hwnd):
@@ -608,20 +645,25 @@ class PlayerView(QWidget):
         if not user32 or not self.embedded_hwnd:
             return
 
-        vp_w = max(100, self.viewport_frame.width())
-        vp_h = max(100, self.viewport_frame.height())
+        parent_hwnd = int(self.viewport_frame.winId())
+        rect = wintypes.RECT()
+        if not user32.GetClientRect(parent_hwnd, ctypes.byref(rect)):
+            return
+
+        vw = max(100, rect.right - rect.left)
+        vh = max(100, rect.bottom - rect.top)
 
         # Tablet 16:9 widescreen aspect ratio (landscape horizontal)
         ratio = (16.0 / 9.0) if self.is_landscape else (9.0 / 16.0)
 
-        target_w = max(100, vp_w - 8)
+        target_w = vw
         target_h = int(target_w / ratio)
-        if target_h > vp_h - 8:
-            target_h = max(100, vp_h - 8)
+        if target_h > vh:
+            target_h = vh
             target_w = int(target_h * ratio)
 
-        offset_x = (vp_w - target_w) // 2
-        offset_y = (vp_h - target_h) // 2
+        offset_x = (vw - target_w) // 2
+        offset_y = (vh - target_h) // 2
 
         user32.SetWindowPos(
             self.embedded_hwnd,
@@ -694,9 +736,14 @@ class PlayerView(QWidget):
 
     def _on_rotate(self) -> None:
         self.is_landscape = not self.is_landscape
-        rot_val = "0" if self.is_landscape else "1"
+        res = self.adb.run("shell", "settings", "get", "system", "user_rotation")
+        curr = res.stdout.strip()
+        try:
+            val = (int(curr) + 1) % 4
+        except ValueError:
+            val = 1 if self.is_landscape else 0
         self.adb.run("shell", "settings", "put", "system", "accelerometer_rotation", "0")
-        self.adb.run("shell", "settings", "put", "system", "user_rotation", rot_val)
+        self.adb.run("shell", "settings", "put", "system", "user_rotation", str(val))
         self._sync_geometry()
 
     def _on_back(self) -> None:
