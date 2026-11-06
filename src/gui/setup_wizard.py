@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import List, Tuple
-from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtCore import QObject, QSize, QThread, Qt, Signal
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from constants import AVD_ROOT, DEFAULT_AVD_NAME, JDK_ROOT, SDK_ROOT, USER_HOME
+from gui.icons import get_svg_icon, get_svg_pixmap
 from gui.theme import ThemePalette
 from provisioner import bootstrap
 
@@ -97,11 +98,19 @@ class SetupWizard(QWidget):
         h_layout.setContentsMargins(24, 20, 24, 20)
         h_layout.setSpacing(8)
 
+        title_row = QHBoxLayout()
+        self.wizard_logo = QLabel()
+        self.wizard_logo.setFixedSize(30, 30)
+        self.wizard_logo.setScaledContents(True)
+        self.wizard_logo.setPixmap(get_svg_pixmap("anvill-logo.svg", self.palette.accent, 30))
+
         self.title_lbl = QLabel("First-Time Setup & Device Provisioning")
-        title_font = QFont()
-        title_font.setPointSize(18)
-        title_font.setBold(True)
+        title_font = QFont("Segoe UI", 16, QFont.Bold)
         self.title_lbl.setFont(title_font)
+
+        title_row.addWidget(self.wizard_logo)
+        title_row.addWidget(self.title_lbl)
+        title_row.addStretch()
 
         self.desc_lbl = QLabel(
             "Anvill will download the portable Android SDK, create your virtual device, "
@@ -109,7 +118,7 @@ class SetupWizard(QWidget):
         )
         self.desc_lbl.setWordWrap(True)
 
-        h_layout.addWidget(self.title_lbl)
+        h_layout.addLayout(title_row)
         h_layout.addWidget(self.desc_lbl)
         main_layout.addWidget(header_card)
 
@@ -172,13 +181,17 @@ class SetupWizard(QWidget):
         actions_bar = QHBoxLayout()
         actions_bar.setSpacing(12)
 
-        self.start_btn = QPushButton("🚀 Start Full Setup")
+        self.start_btn = QPushButton(" Start Full Setup")
         self.start_btn.setProperty("class", "PrimaryButton")
+        self.start_btn.setIcon(get_svg_icon("android-svgrepo-com.svg", "#000000", "#FFFFFF", 18))
+        self.start_btn.setIconSize(QSize(18, 18))
         self.start_btn.setMinimumHeight(42)
         self.start_btn.clicked.connect(self._start_setup)
 
-        self.continue_btn = QPushButton("Proceed to Android Player ▶")
+        self.continue_btn = QPushButton(" Proceed to Android Player")
         self.continue_btn.setProperty("class", "PrimaryButton")
+        self.continue_btn.setIcon(get_svg_icon("android-svgrepo-com.svg", "#000000", "#FFFFFF", 18))
+        self.continue_btn.setIconSize(QSize(18, 18))
         self.continue_btn.setMinimumHeight(42)
         self.continue_btn.setVisible(False)
         self.continue_btn.clicked.connect(self.setup_completed.emit)
@@ -190,6 +203,8 @@ class SetupWizard(QWidget):
 
     def update_palette(self, palette: ThemePalette) -> None:
         self.palette = palette
+        if hasattr(self, "wizard_logo"):
+            self.wizard_logo.setPixmap(get_svg_pixmap("anvill-logo.svg", palette.accent, 30))
         self.title_lbl.setStyleSheet(f"color: {palette.accent}; font-weight: 700;")
         self.desc_lbl.setStyleSheet(f"color: {palette.text_secondary};")
         self.status_lbl.setStyleSheet(f"color: {palette.text_accent};")

@@ -19,6 +19,7 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
 from gui.app import MainWindow
+from gui.icons import get_svg_icon
 
 
 def main() -> int:
@@ -29,6 +30,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Anvill")
     app.setOrganizationName("AnvillProject")
+    app.setWindowIcon(get_svg_icon("anvill-logo.svg", "#00E5FF", "#00E5FF", 64))
 
     # Set default modern UI font
     font = QFont("Segoe UI", 10)
@@ -36,6 +38,7 @@ def main() -> int:
     app.setFont(font)
 
     window = MainWindow()
+    window.setWindowIcon(get_svg_icon("anvill-logo.svg", "#00E5FF", "#00E5FF", 64))
     window.show()
 
     return app.exec()

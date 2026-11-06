@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from config import load_config
 from constants import CONFIG_PATH
+from gui.icons import get_svg_icon, get_svg_pixmap
 from gui.theme import ThemePalette, list_themes
 
 
@@ -33,6 +34,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.palette = palette
         self.setWindowTitle("Anvill Settings")
+        self.setWindowIcon(get_svg_icon("anvill-logo.svg", palette.accent, palette.accent, 24))
         self.setFixedSize(480, 520)
         self.setModal(True)
 
@@ -67,9 +69,10 @@ class SettingsDialog(QDialog):
         l2 = QLabel("Interface Theme:")
         l2.setStyleSheet("font-weight: 600;")
         self.theme_combo = QComboBox()
+        self.theme_combo.setIconSize(self.theme_combo.iconSize())
         current_theme = self.cfg.get("vm", {}).get("theme", self.palette.id)
         for tid, tname, accent in list_themes():
-            self.theme_combo.addItem(f"🎨 {tname}", tid)
+            self.theme_combo.addItem(get_svg_icon("theme-svgrepo-com.svg", accent, accent, 14), f" {tname}", tid)
         idx = self.theme_combo.findData(current_theme)
         if idx >= 0:
             self.theme_combo.setCurrentIndex(idx)

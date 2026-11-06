@@ -31,6 +31,7 @@ from adb import AdbManager
 from config import load_config
 from configurator import AvdConfigurator
 from constants import AVD_ROOT, DEFAULT_AVD_NAME, REPO_ROOT, SDK_ROOT
+from gui.icons import get_svg_icon, get_svg_pixmap
 from gui.theme import ThemePalette
 from inspector import HostInspector
 from launcher import EmulatorLauncher, LaunchFlags, pick_gpu_mode
@@ -370,11 +371,13 @@ class PlayerView(QWidget):
 
         # Header Title
         title_box = QHBoxLayout()
-        icon = QLabel("📱")
-        icon.setFont(QFont("Segoe UI Emoji", 26))
+        self.card_icon_lbl = QLabel()
+        self.card_icon_lbl.setFixedSize(28, 28)
+        self.card_icon_lbl.setScaledContents(True)
+        self.card_icon_lbl.setPixmap(get_svg_pixmap("android-svgrepo-com.svg", self.palette.accent, 28))
         title = QLabel("Android Tablet Player")
         title.setFont(QFont("Segoe UI", 16, QFont.Bold))
-        title_box.addWidget(icon)
+        title_box.addWidget(self.card_icon_lbl)
         title_box.addWidget(title)
         title_box.addStretch()
         c_layout.addLayout(title_box)
@@ -391,7 +394,7 @@ class PlayerView(QWidget):
         db_layout = QHBoxLayout(self.detected_banner)
         db_layout.setContentsMargins(12, 6, 12, 6)
 
-        self.detected_lbl = QLabel("⚡ Running Emulator window detected on desktop!")
+        self.detected_lbl = QLabel("Running Emulator window detected on desktop!")
         self.detected_lbl.setStyleSheet("color: #10B981; font-weight: 600; font-size: 12px;")
         self.attach_btn = QPushButton("Dock Inside App")
         self.attach_btn.setProperty("class", "PrimaryButton")
@@ -430,9 +433,11 @@ class PlayerView(QWidget):
         c_layout.addLayout(opts_box)
         c_layout.addSpacing(10)
 
-        # Big Launch Button
-        self.launch_btn = QPushButton("▶ Launch Android Tablet")
+        # Big Launch Button with Android vector icon
+        self.launch_btn = QPushButton(" Launch Android Tablet")
         self.launch_btn.setProperty("class", "PrimaryButton")
+        self.launch_btn.setIcon(get_svg_icon("android-svgrepo-com.svg", "#000000", "#FFFFFF", 20))
+        self.launch_btn.setIconSize(QSize(20, 20))
         self.launch_btn.setMinimumHeight(44)
         self.launch_btn.clicked.connect(self._start_emulator)
         c_layout.addWidget(self.launch_btn)
@@ -464,9 +469,10 @@ class PlayerView(QWidget):
         bo_layout.setAlignment(Qt.AlignCenter)
         bo_layout.setSpacing(10)
 
-        spinner = QLabel("⚡")
-        spinner.setFont(QFont("Segoe UI Emoji", 34))
-        spinner.setAlignment(Qt.AlignCenter)
+        self.boot_spinner_lbl = QLabel()
+        self.boot_spinner_lbl.setFixedSize(48, 48)
+        self.boot_spinner_lbl.setAlignment(Qt.AlignCenter)
+        self.boot_spinner_lbl.setPixmap(get_svg_pixmap("anvill-logo.svg", self.palette.accent, 48))
 
         self.boot_title_lbl = QLabel("Starting Android Tablet...")
         self.boot_title_lbl.setFont(QFont("Segoe UI", 15, QFont.Bold))
@@ -477,7 +483,7 @@ class PlayerView(QWidget):
         self.boot_status_lbl.setStyleSheet("color: #00E5FF; font-weight: 600; font-size: 13px;")
         self.boot_status_lbl.setAlignment(Qt.AlignCenter)
 
-        bo_layout.addWidget(spinner)
+        bo_layout.addWidget(self.boot_spinner_lbl, alignment=Qt.AlignCenter)
         bo_layout.addWidget(self.boot_title_lbl)
         bo_layout.addWidget(self.boot_status_lbl)
 
@@ -504,13 +510,13 @@ class PlayerView(QWidget):
         t_layout.setContentsMargins(4, 8, 4, 8)
         t_layout.setSpacing(6)
 
-        # Quick Actions
-        self.fs_btn = self._make_tool_btn("⛶", "Toggle Fullscreen", self._on_toggle_fullscreen)
-        self.vol_up_btn = self._make_tool_btn("＋", "Volume Up", self._on_vol_up)
-        self.vol_down_btn = self._make_tool_btn("－", "Volume Down", self._on_vol_down)
-        self.rotate_btn = self._make_tool_btn("↻", "Rotate Orientation (Landscape / Portrait)", self._on_rotate)
-        self.shot_btn = self._make_tool_btn("📷", "Take Screenshot", self._on_screenshot)
-        self.apk_btn = self._make_tool_btn("APK", "Install APK File", self._on_install_apk)
+        # Quick Actions with Crisp Vector SVGs
+        self.fs_btn = self._make_tool_btn("full-screen-904-svgrepo-com.svg", "Toggle Fullscreen", self._on_toggle_fullscreen, size=18)
+        self.vol_up_btn = self._make_tool_btn("plus-large-svgrepo-com.svg", "Volume Up", self._on_vol_up, size=16)
+        self.vol_down_btn = self._make_tool_btn("minus-svgrepo-com.svg", "Volume Down", self._on_vol_down, size=16)
+        self.rotate_btn = self._make_tool_btn("reload-svgrepo-com.svg", "Rotate Orientation (Landscape / Portrait)", self._on_rotate, size=18)
+        self.shot_btn = self._make_tool_btn("camera-svgrepo-com.svg", "Take Screenshot", self._on_screenshot, size=18)
+        self.apk_btn = self._make_tool_btn("apk-file-format-symbol-svgrepo-com.svg", "Install APK File", self._on_install_apk, size=18)
 
         t_layout.addWidget(self.fs_btn)
         t_layout.addWidget(self.vol_up_btn)
@@ -523,10 +529,10 @@ class PlayerView(QWidget):
         t_layout.addWidget(self._make_separator())
         t_layout.addStretch(1)
 
-        # Android Navigation Keys
-        self.back_btn = self._make_tool_btn("◀", "Back", self._on_back)
-        self.home_btn = self._make_tool_btn("●", "Home", self._on_home)
-        self.recents_btn = self._make_tool_btn("■", "Recent Apps", self._on_recents)
+        # Android Navigation Keys (Back, Home, Overview)
+        self.back_btn = self._make_tool_btn("back-svgrepo-com.svg", "Back", self._on_back, size=16)
+        self.home_btn = self._make_tool_btn("home-svgrepo-com.svg", "Home", self._on_home, size=18)
+        self.recents_btn = self._make_tool_btn("apps-svgrepo-com.svg", "Recent Apps", self._on_recents, size=16)
 
         t_layout.addWidget(self.back_btn)
         t_layout.addWidget(self.home_btn)
@@ -536,19 +542,40 @@ class PlayerView(QWidget):
         t_layout.addWidget(self._make_separator())
 
         # Stop VM Button (Clean subtle red)
-        self.stop_btn = QPushButton("⏻")
-        self.stop_btn.setProperty("class", "ToolButton")
-        self.stop_btn.setToolTip("Shutdown Virtual Machine")
-        self.stop_btn.setStyleSheet("color: #EF4444;")
-        self.stop_btn.clicked.connect(self._stop_emulator)
+        self.stop_btn = self._make_tool_btn(
+            "shut-down-1431-svgrepo-com.svg",
+            "Shutdown Virtual Machine",
+            self._stop_emulator,
+            size=18,
+            color_normal="#EF4444",
+            color_active="#F87171",
+        )
         t_layout.addWidget(self.stop_btn)
 
         return toolbar
 
-    def _make_tool_btn(self, icon_text: str, tooltip: str, callback) -> QPushButton:
-        btn = QPushButton(icon_text)
+    def _make_tool_btn(
+        self,
+        svg_name: str,
+        tooltip: str,
+        callback,
+        size: int = 18,
+        color_normal: Optional[str] = None,
+        color_active: Optional[str] = None,
+    ) -> QPushButton:
+        btn = QPushButton()
         btn.setProperty("class", "ToolButton")
         btn.setToolTip(tooltip)
+        btn.setFixedSize(36, 36)
+        btn.setIconSize(QSize(size, size))
+
+        norm = color_normal or self.palette.text_secondary
+        act = color_active or self.palette.accent
+        btn.setIcon(get_svg_icon(svg_name, norm, act, size=size))
+        btn.setProperty("svg_name", svg_name)
+        btn.setProperty("icon_size", size)
+        btn.setProperty("custom_normal", color_normal)
+        btn.setProperty("custom_active", color_active)
         btn.clicked.connect(callback)
         return btn
 
@@ -569,6 +596,30 @@ class PlayerView(QWidget):
                     border-radius: 6px;
                 }}
             """)
+            # Refresh toolbar vector icons
+            tool_buttons = [
+                self.fs_btn,
+                self.vol_up_btn,
+                self.vol_down_btn,
+                self.rotate_btn,
+                self.shot_btn,
+                self.apk_btn,
+                self.back_btn,
+                self.home_btn,
+                self.recents_btn,
+            ]
+            for btn in tool_buttons:
+                svg_name = btn.property("svg_name")
+                sz = btn.property("icon_size") or 18
+                if svg_name:
+                    btn.setIcon(get_svg_icon(svg_name, palette.text_secondary, palette.accent, size=sz))
+
+        if hasattr(self, "card_icon_lbl"):
+            self.card_icon_lbl.setPixmap(get_svg_pixmap("android-svgrepo-com.svg", palette.accent, 28))
+        if hasattr(self, "boot_spinner_lbl"):
+            self.boot_spinner_lbl.setPixmap(get_svg_pixmap("anvill-logo.svg", palette.accent, 48))
+        if hasattr(self, "launch_btn"):
+            self.launch_btn.setIcon(get_svg_icon("android-svgrepo-com.svg", "#000000", "#FFFFFF", 20))
 
     # -----------------------------------------------------------------------
     # Detection & Embedding Operations

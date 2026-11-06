@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from constants import AVD_ROOT, DEFAULT_AVD_NAME, SDK_ROOT
+from gui.icons import get_svg_pixmap
 from gui.theme import ThemePalette
 
 
@@ -62,13 +63,11 @@ class SplashScreen(QWidget):
         card_layout.setContentsMargins(30, 30, 30, 30)
         card_layout.setSpacing(16)
 
-        # Glowing Icon
-        self.icon_lbl = QLabel("⚡")
-        icon_font = QFont()
-        icon_font.setPointSize(48)
-        icon_font.setBold(True)
-        self.icon_lbl.setFont(icon_font)
+        # Glowing Icon (High-resolution Anvill Logo)
+        self.icon_lbl = QLabel()
+        self.icon_lbl.setFixedSize(68, 68)
         self.icon_lbl.setAlignment(Qt.AlignCenter)
+        self.icon_lbl.setPixmap(get_svg_pixmap("anvill-logo.svg", self.palette.accent, 68))
 
         # Title
         self.title_lbl = QLabel("ANVILL")
@@ -110,7 +109,7 @@ class SplashScreen(QWidget):
 
     def update_palette(self, palette: ThemePalette) -> None:
         self.palette = palette
-        self.icon_lbl.setStyleSheet(f"color: {palette.accent};")
+        self.icon_lbl.setPixmap(get_svg_pixmap("anvill-logo.svg", palette.accent, 68))
         self.title_lbl.setStyleSheet(f"color: {palette.text_primary};")
         self.sub_lbl.setStyleSheet(f"color: {palette.text_secondary};")
         self.status_lbl.setStyleSheet(f"color: {palette.text_accent}; font-weight: 500;")

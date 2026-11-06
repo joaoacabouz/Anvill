@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Optional
-from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtCore import QPoint, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QMouseEvent
 from PySide6.QtWidgets import (
     QComboBox,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui.icons import get_svg_icon, get_svg_pixmap
 from gui.theme import ThemePalette, list_themes
 
 
@@ -46,9 +47,10 @@ class FramelessTitleBar(QWidget):
         main_layout.setSpacing(8)
 
         # 1. Left Branding Section
-        self.logo_lbl = QLabel("⚡")
-        logo_font = QFont("Segoe UI", 12, QFont.Bold)
-        self.logo_lbl.setFont(logo_font)
+        self.logo_lbl = QLabel()
+        self.logo_lbl.setFixedSize(20, 20)
+        self.logo_lbl.setScaledContents(True)
+        self.logo_lbl.setPixmap(get_svg_pixmap("anvill-logo.svg", self.palette.accent, 20))
 
         self.title_lbl = QLabel("ANVILL")
         title_font = QFont("Segoe UI", 10, QFont.Bold)
@@ -85,16 +87,19 @@ class FramelessTitleBar(QWidget):
         self.theme_combo.setToolTip("Switch Color Theme")
         self.theme_combo.setFixedWidth(130)
         self.theme_combo.setFixedHeight(26)
+        self.theme_combo.setIconSize(QSize(14, 14))
         for tid, tname, accent in list_themes():
-            self.theme_combo.addItem(f"🎨 {tname}", tid)
+            self.theme_combo.addItem(get_svg_icon("theme-svgrepo-com.svg", accent, accent, 14), f" {tname}", tid)
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
         right_layout.addWidget(self.theme_combo)
 
-        # Settings Button
-        self.settings_btn = QPushButton("⚙")
+        # Settings Button with clean vector dots icon
+        self.settings_btn = QPushButton()
         self.settings_btn.setObjectName("TitleBarSettingsBtn")
         self.settings_btn.setToolTip("Settings & Profiles")
         self.settings_btn.setFixedSize(30, 32)
+        self.settings_btn.setIconSize(QSize(16, 16))
+        self.settings_btn.setIcon(get_svg_icon("dots-vertical-svgrepo-com.svg", self.palette.text_secondary, self.palette.accent, 16))
         self.settings_btn.clicked.connect(self.settings_requested.emit)
         right_layout.addWidget(self.settings_btn)
 
@@ -198,7 +203,9 @@ class FramelessTitleBar(QWidget):
                 color: #FFFFFF;
             }}
         """)
-        self.logo_lbl.setStyleSheet(f"color: {palette.accent}; border: none;")
+        self.logo_lbl.setPixmap(get_svg_pixmap("anvill-logo.svg", palette.accent, 20))
+        self.settings_btn.setIcon(get_svg_icon("dots-vertical-svgrepo-com.svg", palette.text_secondary, palette.accent, 16))
+        self.logo_lbl.setStyleSheet(f"border: none;")
         self.title_lbl.setStyleSheet(f"color: {palette.text_primary}; border: none;")
 
         # Sync combo selection

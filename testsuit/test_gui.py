@@ -23,11 +23,12 @@ app = QApplication.instance()
 if app is None:
     app = QApplication([])
 
+from gui.icons import ASSETS_DIR, get_svg_icon, get_svg_pixmap, tint_svg
 from gui.theme import THEMES, generate_qss, get_theme, list_themes
 from gui.splash import is_setup_completed, SplashScreen
 from gui.titlebar import FramelessTitleBar
 from gui.settings_dialog import SettingsDialog
-from gui.player import configure_docked_window, embed_and_reparent_display, ViewportContainer
+from gui.player import configure_docked_window, embed_and_reparent_display, ViewportContainer, PlayerView
 
 
 class TestGUI(unittest.TestCase):
@@ -139,6 +140,38 @@ class TestGUI(unittest.TestCase):
         vp = ViewportContainer()
         self.assertEqual(vp.objectName(), "PlayerViewportFrame")
         self.assertTrue(hasattr(vp, "resized"))
+
+    def test_svg_assets_render_properly(self):
+        """All SVGs in src/Assets render into valid non-empty pixmaps with tinting."""
+        self.assertTrue(ASSETS_DIR.is_dir())
+        svg_files = list(ASSETS_DIR.glob("*.svg"))
+        self.assertGreaterEqual(len(svg_files), 10)
+
+        for svg in svg_files:
+            pix = get_svg_pixmap(svg.name, color="#00E5FF", size=32)
+            self.assertFalse(pix.isNull())
+            self.assertEqual(pix.width(), 32)
+            self.assertEqual(pix.height(), 32)
+
+            icon = get_svg_icon(svg.name, color_normal="#94A3B8", color_active="#00E5FF", size=24)
+            self.assertFalse(icon.isNull())
+
+    def test_player_toolbar_svg_buttons(self):
+        """PlayerView instantiates with SVG icons on all side toolbar actions."""
+        parent = QWidget()
+        theme = get_theme("cyber_cyan")
+        pv = PlayerView(parent=parent, palette=theme)
+
+        self.assertFalse(pv.fs_btn.icon().isNull())
+        self.assertFalse(pv.vol_up_btn.icon().isNull())
+        self.assertFalse(pv.vol_down_btn.icon().isNull())
+        self.assertFalse(pv.rotate_btn.icon().isNull())
+        self.assertFalse(pv.shot_btn.icon().isNull())
+        self.assertFalse(pv.apk_btn.icon().isNull())
+        self.assertFalse(pv.back_btn.icon().isNull())
+        self.assertFalse(pv.home_btn.icon().isNull())
+        self.assertFalse(pv.recents_btn.icon().isNull())
+        self.assertFalse(pv.stop_btn.icon().isNull())
 
 
 if __name__ == "__main__":
