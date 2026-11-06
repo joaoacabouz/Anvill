@@ -1,0 +1,81 @@
+{
+  "description": "VM hardware profiles and device spoofing profiles for Android 16 (API 36). The 'auto' profile is calculated dynamically at startup.",
+  "metadata": {
+    "android_version": 16,
+    "api_level": 36,
+    "target_image": "system-images;android-36;google_apis;x86_64",
+    "last_updated": "2026-11-06"
+  },
+  "hardware_profiles": {
+    "auto": {
+      "description": "Calculated dynamically based on host RAM. cpu_cores = 50% of logical threads (clamp 2-8).",
+      "type": "auto"
+    },
+    "ultra": {
+      "description": "High end — e.g. Ryzen 7 / Core i7 + RTX 4060 + 32GB RAM",
+      "ram_mb": 12288,
+      "heap_mb": 1024,
+      "cpu_cores": 8,
+      "width": 1440,
+      "height": 3088,
+      "dpi": 500,
+      "fps": 120,
+      "disk_gb": 64
+    },
+    "high": {
+      "description": "Mid range — 16GB RAM + dedicated GPU",
+      "ram_mb": 8192,
+      "heap_mb": 768,
+      "cpu_cores": 6,
+      "width": 1080,
+      "height": 2400,
+      "dpi": 420,
+      "fps": 120,
+      "disk_gb": 32
+    },
+    "balanced": {
+      "description": "Laptops / PCs with 8-16GB RAM",
+      "ram_mb": 4096,
+      "heap_mb": 512,
+      "cpu_cores": 4,
+      "width": 1080,
+      "height": 2400,
+      "dpi": 420,
+      "fps": 60,
+      "disk_gb": 16
+    },
+    "low": {
+      "description": "Integrated GPU / low RAM",
+      "ram_mb": 3072,
+      "heap_mb": 256,
+      "cpu_cores": 2,
+      "width": 720,
+      "height": 1600,
+      "dpi": 320,
+      "fps": 60,
+      "disk_gb": 16
+    }
+  },
+  "spoof_profiles": {
+    "s23_ultra": {
+      "description": "Samsung Galaxy S23 Ultra — Snapdragon 8 Gen 2",
+      "ro.product.brand": "samsung",
+      "ro.product.model": "SM-S918B",
+      "ro.product.device": "dm3q",
+      "ro.soc.manufacturer": "Qualcomm",
+      "ro.soc.model": "SM8550",
+      "ro.board.platform": "kalama"
+    },
+    "rog_phone_7": {
+      "description": "ASUS ROG Phone 7 — Snapdragon 8 Gen 2 Gaming",
+      "ro.product.brand": "asus",
+      "ro.product.model": "AI2205_C",
+      "ro.soc.manufacturer": "Qualcomm",
+      "ro.soc.model": "SM8550"
+    },
+    "stock": {
+      "description": "No spoofing — stock x86_64 factory device",
+      "_empty": true
+    }
+  }
+}
