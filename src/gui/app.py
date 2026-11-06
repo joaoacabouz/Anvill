@@ -80,6 +80,7 @@ class MainWindow(QMainWindow):
         self.player_view = PlayerView(self, self.current_palette, self.avd_name)
         self.player_view.status_changed.connect(self.title_bar.set_status)
         self.stack.addWidget(self.player_view)
+        self.stack.currentChanged.connect(self._on_stack_page_changed)
 
         root_layout.addWidget(self.stack, stretch=1)
         self.setMouseTracking(True)
@@ -143,6 +144,33 @@ class MainWindow(QMainWindow):
     def _on_setup_completed(self) -> None:
         self.stack.setCurrentIndex(2)
         self.title_bar.set_status("offline")
+
+    def _on_stack_page_changed(self, index: int) -> None:
+        if hasattr(self, "player_view"):
+            self.player_view.set_emulator_visible(index == 2)
+
+    def moveEvent(self, event) -> None:
+        super().moveEvent(event)
+        if hasattr(self, "player_view"):
+            self.player_view.sync_geometry()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "player_view"):
+            self.player_view.sync_geometry()
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if hasattr(self, "player_view"):
+            if self.isMinimized():
+                self.player_view.set_emulator_visible(False)
+            elif self.isVisible() and self.stack.currentIndex() == 2:
+                self.player_view.set_emulator_visible(True)
+
+    def closeEvent(self, event) -> None:
+        if hasattr(self, "player_view"):
+            self.player_view.set_emulator_visible(False)
+        super().closeEvent(event)
 
     # Native OS Edge Resizing for Frameless Window
     def mousePressEvent(self, event: QMouseEvent) -> None:

@@ -138,35 +138,54 @@ def find_emulator_windows(
     return display_hwnd, toolbars
 
 
-def embed_and_reparent_display(child_hwnd: int, parent_hwnd: int) -> bool:
-    """Strips top-level window borders and establishes Win32 child relationship with parent widget."""
-    if not user32 or not child_hwnd or not parent_hwnd:
+def configure_docked_window(disp_hwnd: int, owner_hwnd: int = 0) -> bool:
+    """Configures the external emulator window as a borderless owned window docked to the main app."""
+    if not user32 or not disp_hwnd:
         return False
 
     try:
-        # Strip popup & window decorations from style
-        style = GetWindowLongPtr(child_hwnd, GWL_STYLE)
-        style &= ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU)
-        style |= (WS_CHILD | WS_VISIBLE)
-        SetWindowLongPtr(child_hwnd, GWL_STYLE, ctypes.c_ssize_t(style).value)
+        # Strip popup window frames, title bar, caption, system menu, thick borders
+        GWL_STYLE = -16
+        WS_POPUP = 0x80000000
+        WS_VISIBLE = 0x10000000
+        WS_CAPTION = 0x00C00000
+        WS_THICKFRAME = 0x00040000
+        WS_MINIMIZEBOX = 0x00020000
+        WS_MAXIMIZEBOX = 0x00010000
+        WS_SYSMENU = 0x00080000
 
-        # Strip taskbar & border decorations from extended style
+        style = GetWindowLongPtr(disp_hwnd, GWL_STYLE)
+        style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU)
+        style |= (WS_POPUP | WS_VISIBLE)
+        SetWindowLongPtr(disp_hwnd, GWL_STYLE, ctypes.c_ssize_t(style).value)
+
+        # Strip taskbar icon and add toolwindow style so it behaves as an owned docked viewport
         GWL_EXSTYLE = -20
         WS_EX_APPWINDOW = 0x00040000
-        WS_EX_WINDOWEDGE = 0x00000100
-        ex_style = GetWindowLongPtr(child_hwnd, GWL_EXSTYLE)
-        ex_style &= ~(WS_EX_APPWINDOW | WS_EX_WINDOWEDGE)
-        SetWindowLongPtr(child_hwnd, GWL_EXSTYLE, ctypes.c_ssize_t(ex_style).value)
+        WS_EX_TOOLWINDOW = 0x00000080
+        ex_style = GetWindowLongPtr(disp_hwnd, GWL_EXSTYLE)
+        ex_style &= ~WS_EX_APPWINDOW
+        ex_style |= WS_EX_TOOLWINDOW
+        SetWindowLongPtr(disp_hwnd, GWL_EXSTYLE, ctypes.c_ssize_t(ex_style).value)
 
-        user32.SetParent(child_hwnd, parent_hwnd)
+        # Bind window ownership to the main application window
+        if owner_hwnd:
+            GWLP_HWNDPARENT = -8
+            SetWindowLongPtr(disp_hwnd, GWLP_HWNDPARENT, ctypes.c_ssize_t(owner_hwnd).value)
+
         return True
     except Exception as exc:
-        print(f"[Anvill] Error embedding HWND {child_hwnd}: {exc}")
+        print(f"[Anvill] Error docking HWND {disp_hwnd}: {exc}")
         return False
 
 
+def embed_and_reparent_display(child_hwnd: int, parent_hwnd: int) -> bool:
+    """Compatibility wrapper that configures borderless owned window docking."""
+    return configure_docked_window(child_hwnd, parent_hwnd)
+
+
 class ViewportContainer(QWidget):
-    """Container widget hosting the embedded Win32 Android Emulator window with dynamic resize notification."""
+    """Container widget hosting the docked Win32 Android Emulator window with dynamic resize notification."""
 
     resized = Signal()
 
@@ -261,6 +280,7 @@ class EmulatorBootWorker(QThread):
             self.adb.run("shell", "wm", "size", f"{profile.width}x{profile.height}")
             self.adb.run("shell", "wm", "density", str(profile.dpi))
             self.adb.run("shell", "settings", "put", "system", "accelerometer_rotation", "0")
+            self.adb.run("shell", "settings", "put", "system", "user_rotation", "0")
 
             self.status_signal.emit("Injecting device spoofing & anti-detection...")
             self.adb.apply_spoof(spoof)
@@ -292,14 +312,22 @@ class PlayerView(QWidget):
         self.adb = AdbManager()
         self.boot_worker: Optional[EmulatorBootWorker] = None
         self.embedded_hwnd: Optional[int] = None
+        self._toolbars: List[int] = []
         self.is_landscape: bool = True
         self._embed_timer: Optional[QTimer] = None
         self._detect_timer: Optional[QTimer] = None
+        self._watchdog_timer: Optional[QTimer] = None
 
         self.setAcceptDrops(True)
         self._setup_ui()
         self.update_palette(palette)
         self._start_desktop_detection_timer()
+
+        # Watchdog alignment timer ensures docked window stays firmly positioned
+        self._watchdog_timer = QTimer(self)
+        self._watchdog_timer.setInterval(800)
+        self._watchdog_timer.timeout.connect(self._sync_geometry)
+        self._watchdog_timer.start()
 
     def _setup_ui(self) -> None:
         main_layout = QHBoxLayout(self)
@@ -625,12 +653,15 @@ class PlayerView(QWidget):
         if self._embed_timer:
             self._embed_timer.stop()
 
-        if user32 and toolbars:
-            for tb in toolbars:
+        self._toolbars = toolbars or []
+        if user32 and self._toolbars:
+            for tb in self._toolbars:
                 user32.ShowWindow(tb, SW_HIDE)
 
-        parent_hwnd = int(self.viewport_frame.winId())
-        if embed_and_reparent_display(disp_hwnd, parent_hwnd):
+        top_win = self.window()
+        owner_hwnd = int(top_win.winId()) if top_win else 0
+
+        if configure_docked_window(disp_hwnd, owner_hwnd):
             self.embedded_hwnd = disp_hwnd
             self.boot_overlay.setVisible(False)
             self._sync_geometry()
@@ -645,13 +676,15 @@ class PlayerView(QWidget):
         if not user32 or not self.embedded_hwnd:
             return
 
-        parent_hwnd = int(self.viewport_frame.winId())
-        rect = wintypes.RECT()
-        if not user32.GetClientRect(parent_hwnd, ctypes.byref(rect)):
+        top_win = self.window()
+        # If top window is minimized, hidden or if Player page is not active in stack, hide emulator window
+        if not top_win or top_win.isMinimized() or not self.isVisible() or self.stack.currentIndex() != 1:
+            user32.ShowWindow(self.embedded_hwnd, SW_HIDE)
             return
 
-        vw = max(100, rect.right - rect.left)
-        vh = max(100, rect.bottom - rect.top)
+        vp_pt = self.viewport_frame.mapToGlobal(QPoint(0, 0))
+        vw = max(100, self.viewport_frame.width())
+        vh = max(100, self.viewport_frame.height())
 
         # Tablet 16:9 widescreen aspect ratio (landscape horizontal)
         ratio = (16.0 / 9.0) if self.is_landscape else (9.0 / 16.0)
@@ -665,15 +698,35 @@ class PlayerView(QWidget):
         offset_x = (vw - target_w) // 2
         offset_y = (vh - target_h) // 2
 
+        target_x = vp_pt.x() + offset_x
+        target_y = vp_pt.y() + offset_y
+
         user32.SetWindowPos(
             self.embedded_hwnd,
-            0,
-            offset_x,
-            offset_y,
+            0,  # HWND_TOP
+            target_x,
+            target_y,
             target_w,
             target_h,
-            SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+            0x0040 | 0x0020 | 0x0010,  # SWP_SHOWWINDOW | SWP_FRAMECHANGED | SWP_NOACTIVATE
         )
+
+    # Public aliases for external synchronizers
+    sync_geometry = _sync_geometry
+
+    def set_emulator_visible(self, visible: bool) -> None:
+        """Controls emulator display visibility when navigating away or switching tabs."""
+        if not user32 or not self.embedded_hwnd:
+            return
+        top_win = self.window()
+        if visible and self.stack.currentIndex() == 1 and top_win and not top_win.isMinimized():
+            self._sync_geometry()
+        else:
+            user32.ShowWindow(self.embedded_hwnd, SW_HIDE)
+
+    def moveEvent(self, event) -> None:
+        super().moveEvent(event)
+        self._sync_geometry()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -693,6 +746,8 @@ class PlayerView(QWidget):
     def _cleanup_session(self) -> None:
         if self._embed_timer:
             self._embed_timer.stop()
+        if user32 and self.embedded_hwnd:
+            user32.ShowWindow(self.embedded_hwnd, SW_HIDE)
         self.embedded_hwnd = None
         self.boot_overlay.setVisible(True)
 
@@ -736,12 +791,8 @@ class PlayerView(QWidget):
 
     def _on_rotate(self) -> None:
         self.is_landscape = not self.is_landscape
-        res = self.adb.run("shell", "settings", "get", "system", "user_rotation")
-        curr = res.stdout.strip()
-        try:
-            val = (int(curr) + 1) % 4
-        except ValueError:
-            val = 1 if self.is_landscape else 0
+        # For tablet landscape (1920x1080), 0 is landscape horizontal and 1 is portrait vertical
+        val = 0 if self.is_landscape else 1
         self.adb.run("shell", "settings", "put", "system", "accelerometer_rotation", "0")
         self.adb.run("shell", "settings", "put", "system", "user_rotation", str(val))
         self._sync_geometry()

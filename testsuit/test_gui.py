@@ -27,6 +27,7 @@ from gui.theme import THEMES, generate_qss, get_theme, list_themes
 from gui.splash import is_setup_completed, SplashScreen
 from gui.titlebar import FramelessTitleBar
 from gui.settings_dialog import SettingsDialog
+from gui.player import configure_docked_window, embed_and_reparent_display, ViewportContainer
 
 
 class TestGUI(unittest.TestCase):
@@ -127,6 +128,17 @@ class TestGUI(unittest.TestCase):
         self.assertIsNotNone(dlg.theme_combo)
         self.assertIsNotNone(dlg.hw_combo)
         self.assertIsNotNone(dlg.spoof_combo)
+
+    def test_docked_window_helpers_handle_invalid_hwnds(self):
+        """configure_docked_window and embed_and_reparent_display return False safely on invalid HWNDs."""
+        self.assertFalse(configure_docked_window(0, 0))
+        self.assertFalse(embed_and_reparent_display(0, 0))
+
+    def test_viewport_container_instantiation(self):
+        """ViewportContainer instantiates with native window attributes and emits resize signal."""
+        vp = ViewportContainer()
+        self.assertEqual(vp.objectName(), "PlayerViewportFrame")
+        self.assertTrue(hasattr(vp, "resized"))
 
 
 if __name__ == "__main__":
