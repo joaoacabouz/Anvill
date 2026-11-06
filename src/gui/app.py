@@ -10,6 +10,7 @@ from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtGui import QCursor, QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QFrame,
     QMainWindow,
     QStackedWidget,
     QVBoxLayout,
@@ -44,20 +45,15 @@ class MainWindow(QMainWindow):
         self.resize(1080, 720)
         self.setMinimumSize(850, 580)
 
-        # Resize tracking state
-        self._resize_edge: Optional[Qt.Edge] = None
-        self._resize_corner: Optional[str] = None
-        self._drag_start_pos: Optional[QPoint] = None
-        self._drag_start_geometry: Optional[QRect] = None
-
         self._setup_ui()
         self.apply_theme(self.current_palette)
 
     def _setup_ui(self) -> None:
-        central_widget = QWidget(self)
-        self.setCentralWidget(central_widget)
+        self.central_container = QWidget(self)
+        self.central_container.setObjectName("CentralContainer")
+        self.setCentralWidget(self.central_container)
 
-        root_layout = QVBoxLayout(central_widget)
+        root_layout = QVBoxLayout(self.central_container)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
@@ -87,7 +83,7 @@ class MainWindow(QMainWindow):
 
         root_layout.addWidget(self.stack, stretch=1)
         self.setMouseTracking(True)
-        central_widget.setMouseTracking(True)
+        self.central_container.setMouseTracking(True)
 
     def apply_theme(self, palette: ThemePalette) -> None:
         """Applies theme palette and updates all child widgets."""
@@ -101,6 +97,13 @@ class MainWindow(QMainWindow):
         self.splash_screen.update_palette(palette)
         self.setup_wizard.update_palette(palette)
         self.player_view.update_palette(palette)
+
+        self.central_container.setStyleSheet(f"""
+            QWidget#CentralContainer {{
+                background-color: {palette.bg_main};
+                border: 1px solid {palette.border_color};
+            }}
+        """)
 
     def _on_theme_changed(self, theme_id: str) -> None:
         palette = get_theme(theme_id)
@@ -141,57 +144,33 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(2)
         self.title_bar.set_status("offline")
 
-    # Edge Resizing for Frameless Window
+    # Native OS Edge Resizing for Frameless Window
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton and not self.isMaximized():
             edge, corner = self._hit_test(event.pos())
-            if edge or corner:
-                self._resize_edge = edge
-                self._resize_corner = corner
-                self._drag_start_pos = event.globalPosition().toPoint()
-                self._drag_start_geometry = self.geometry()
+            edges = Qt.Edges()
+            if corner == "top-left":
+                edges = Qt.TopEdge | Qt.LeftEdge
+            elif corner == "top-right":
+                edges = Qt.TopEdge | Qt.RightEdge
+            elif corner == "bottom-left":
+                edges = Qt.BottomEdge | Qt.LeftEdge
+            elif corner == "bottom-right":
+                edges = Qt.BottomEdge | Qt.RightEdge
+            elif edge is not None:
+                edges = edge
+
+            if edges and self.windowHandle():
+                self.windowHandle().startSystemResize(edges)
                 event.accept()
                 return
+
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if not self.isMaximized():
-            if self._drag_start_pos and self._drag_start_geometry:
-                diff = event.globalPosition().toPoint() - self._drag_start_pos
-                geo = QRect(self._drag_start_geometry)
-
-                if self._resize_corner == "top-left":
-                    geo.setTopLeft(geo.topLeft() + diff)
-                elif self._resize_corner == "top-right":
-                    geo.setTopRight(geo.topRight() + diff)
-                elif self._resize_corner == "bottom-left":
-                    geo.setBottomLeft(geo.bottomLeft() + diff)
-                elif self._resize_corner == "bottom-right":
-                    geo.setBottomRight(geo.bottomRight() + diff)
-                elif self._resize_edge == Qt.TopEdge:
-                    geo.setTop(geo.top() + diff.y())
-                elif self._resize_edge == Qt.BottomEdge:
-                    geo.setBottom(geo.bottom() + diff.y())
-                elif self._resize_edge == Qt.LeftEdge:
-                    geo.setLeft(geo.left() + diff.x())
-                elif self._resize_edge == Qt.RightEdge:
-                    geo.setRight(geo.right() + diff.x())
-
-                if geo.width() >= self.minimumWidth() and geo.height() >= self.minimumHeight():
-                    self.setGeometry(geo)
-                event.accept()
-                return
-            else:
-                self._update_cursor_shape(event.pos())
+            self._update_cursor_shape(event.pos())
         super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        self._resize_edge = None
-        self._resize_corner = None
-        self._drag_start_pos = None
-        self._drag_start_geometry = None
-        self.setCursor(Qt.ArrowCursor)
-        super().mouseReleaseEvent(event)
 
     def _hit_test(self, pos: QPoint) -> tuple[Optional[Qt.Edge], Optional[str]]:
         x, y = pos.x(), pos.y()
@@ -235,4 +214,3 @@ class MainWindow(QMainWindow):
             self.setCursor(Qt.SizeHorCursor)
         else:
             self.setCursor(Qt.ArrowCursor)
-

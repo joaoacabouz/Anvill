@@ -1,8 +1,8 @@
-"""Custom frameless title bar for Anvill GUI."""
+"""Custom frameless title bar for Anvill GUI with native Windows dragging support."""
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Optional
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QMouseEvent
 from PySide6.QtWidgets import (
@@ -32,8 +32,8 @@ class FramelessTitleBar(QWidget):
         self.parent_window = parent
         self.palette = palette
         self.avd_name = avd_name
-        self._drag_pos: Optional[QPoint] = None
 
+        self.setObjectName("TitleBarWidget")
         self.setFixedHeight(44)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self._setup_ui()
@@ -41,10 +41,10 @@ class FramelessTitleBar(QWidget):
 
     def _setup_ui(self) -> None:
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 0, 8, 0)
+        layout.setContentsMargins(14, 0, 10, 0)
         layout.setSpacing(10)
 
-        # 1. Branding (Icon + Title)
+        # 1. Branding (Icon + Title + AVD Pill)
         self.logo_lbl = QLabel("⚡")
         logo_font = QFont()
         logo_font.setPointSize(14)
@@ -57,7 +57,6 @@ class FramelessTitleBar(QWidget):
         title_font.setBold(True)
         self.title_lbl.setFont(title_font)
 
-        # AVD Pill
         self.avd_badge = QLabel(f"{self.avd_name}")
         self.avd_badge.setProperty("class", "BadgePill")
 
@@ -65,50 +64,65 @@ class FramelessTitleBar(QWidget):
         layout.addWidget(self.title_lbl)
         layout.addWidget(self.avd_badge)
 
-        layout.addStretch()
+        layout.addStretch(1)
 
         # 2. Center Status Badge
         self.status_badge = QLabel("⚪ Offline")
         self.status_badge.setProperty("class", "StatusOffline")
         self.status_badge.setAlignment(Qt.AlignCenter)
+        self.status_badge.setFixedHeight(24)
         layout.addWidget(self.status_badge)
 
-        layout.addStretch()
+        layout.addStretch(1)
 
-        # 3. Theme Selector
+        # 3. Right Container for Controls (Keeps them grouped and immune to squeezing)
+        right_container = QWidget()
+        right_layout = QHBoxLayout(right_container)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(6)
+
+        # Theme Selector
         self.theme_combo = QComboBox()
         self.theme_combo.setToolTip("Switch Color Theme")
+        self.theme_combo.setFixedWidth(135)
+        self.theme_combo.setFixedHeight(28)
         for tid, tname, accent in list_themes():
             self.theme_combo.addItem(f"🎨 {tname}", tid)
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
-        layout.addWidget(self.theme_combo)
+        right_layout.addWidget(self.theme_combo)
 
-        # 4. Settings Button
+        # Settings Button
         self.settings_btn = QPushButton("⚙")
+        self.settings_btn.setObjectName("TitleBarSettingsBtn")
         self.settings_btn.setToolTip("VM Settings & Hardware Profiles")
-        self.settings_btn.setFixedSize(32, 32)
+        self.settings_btn.setFixedSize(28, 28)
         self.settings_btn.clicked.connect(self.settings_requested.emit)
-        layout.addWidget(self.settings_btn)
+        right_layout.addWidget(self.settings_btn)
 
-        # 5. Window Control Buttons
+        # Window Action Buttons
         self.min_btn = QPushButton("—")
+        self.min_btn.setObjectName("TitleBarMinBtn")
         self.min_btn.setToolTip("Minimize")
-        self.min_btn.setFixedSize(32, 32)
+        self.min_btn.setFixedSize(28, 28)
         self.min_btn.clicked.connect(self.parent_window.showMinimized)
 
         self.max_btn = QPushButton("🗖")
+        self.max_btn.setObjectName("TitleBarMaxBtn")
         self.max_btn.setToolTip("Maximize / Restore")
-        self.max_btn.setFixedSize(32, 32)
+        self.max_btn.setFixedSize(28, 28)
         self.max_btn.clicked.connect(self._toggle_maximize)
 
         self.close_btn = QPushButton("✕")
+        self.close_btn.setObjectName("TitleBarCloseBtn")
         self.close_btn.setToolTip("Close")
-        self.close_btn.setFixedSize(32, 32)
+        self.close_btn.setFixedSize(28, 28)
         self.close_btn.clicked.connect(self.parent_window.close)
 
-        layout.addWidget(self.min_btn)
-        layout.addWidget(self.max_btn)
-        layout.addWidget(self.close_btn)
+        right_layout.addWidget(self.min_btn)
+        right_layout.addWidget(self.max_btn)
+        right_layout.addWidget(self.close_btn)
+
+        layout.addWidget(right_container)
 
     def _toggle_maximize(self) -> None:
         if self.parent_window.isMaximized():
@@ -142,34 +156,40 @@ class FramelessTitleBar(QWidget):
         self.avd_badge.setText(name)
 
     def update_palette(self, palette: ThemePalette) -> None:
-        """Applies theme colors to title bar elements."""
+        """Applies theme colors to title bar elements cleanly without cascading side effects."""
         self.palette = palette
         self.setStyleSheet(f"""
-            QWidget {{
+            QWidget#TitleBarWidget {{
                 background-color: {palette.bg_surface};
                 border-bottom: 1px solid {palette.border_color};
             }}
-            QLabel {{
-                border-bottom: none;
-            }}
-            QPushButton {{
+            QPushButton#TitleBarMinBtn, QPushButton#TitleBarMaxBtn, QPushButton#TitleBarSettingsBtn {{
                 background-color: transparent;
-                border: none;
+                border: 1px solid transparent;
                 border-radius: 6px;
                 color: {palette.text_secondary};
                 font-size: 13px;
                 font-weight: 700;
             }}
-            QPushButton:hover {{
+            QPushButton#TitleBarMinBtn:hover, QPushButton#TitleBarMaxBtn:hover, QPushButton#TitleBarSettingsBtn:hover {{
                 background-color: {palette.accent_dim};
+                border-color: {palette.border_color};
                 color: {palette.accent};
             }}
-            QPushButton#close_btn:hover {{
+            QPushButton#TitleBarCloseBtn {{
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                color: {palette.text_secondary};
+                font-size: 13px;
+                font-weight: 700;
+            }}
+            QPushButton#TitleBarCloseBtn:hover {{
                 background-color: {palette.danger};
+                border-color: {palette.danger};
                 color: #FFFFFF;
             }}
         """)
-        self.close_btn.setObjectName("close_btn")
         self.logo_lbl.setStyleSheet(f"color: {palette.accent}; border: none;")
         self.title_lbl.setStyleSheet(f"color: {palette.text_primary}; border: none;")
 
@@ -180,22 +200,19 @@ class FramelessTitleBar(QWidget):
             self.theme_combo.setCurrentIndex(idx)
             self.theme_combo.blockSignals(False)
 
-    # Mouse drag window handlers
+    # Native Window Dragging
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.parent_window.frameGeometry().topLeft()
-            event.accept()
-
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if event.buttons() == Qt.LeftButton and self._drag_pos is not None:
-            if self.parent_window.isMaximized():
-                self.parent_window.showNormal()
-                self.max_btn.setText("🗖")
-            self.parent_window.move(event.globalPosition().toPoint() - self._drag_pos)
-            event.accept()
+            win = self.window().windowHandle()
+            if win:
+                win.startSystemMove()
+                event.accept()
+                return
+        super().mousePressEvent(event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
             self._toggle_maximize()
             event.accept()
-
+            return
+        super().mouseDoubleClickEvent(event)

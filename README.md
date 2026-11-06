@@ -13,7 +13,7 @@ A modular, 100% portable, hardware-adaptive **Python 3.10+** command-line framew
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 - **100% Portable (`%~dp0` / Repo-Local)**:
   - All Android SDK binaries (`android-sdk/`), Virtual Devices (`avds/`), user keys, and caches (`.android/`) reside strictly inside the repository directory.
@@ -50,7 +50,7 @@ A modular, 100% portable, hardware-adaptive **Python 3.10+** command-line framew
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 All Python source code is cleanly isolated inside `src/`. Only convenient Windows dispatchers (`.bat`) and configuration files reside at the root:
 
@@ -121,7 +121,7 @@ Anvill/
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - **Operating System**: Windows 10 (Build 1809+) or Windows 11 (64-bit).
@@ -165,29 +165,29 @@ app.bat
 #### GUI Highlights:
 - **Custom Frameless Window**: Clean, modern dark window with custom draggable title bar, status badge and window controls.
 - **Multiple Color Themes**: Real-time theme switcher with 6 palettes:
-  - 🔷 **Cyber Cyan** (Default high-tech neon)
-  - 🟣 **Neon Purple** (Synthwave / Deep violet)
-  - 🟢 **Emerald Matrix** (Terminal emerald)
-  - 🟠 **Sunset Amber** (Warm amber / Cyberpunk)
-  - 🔴 **Crimson Red** (Aggressive gaming red)
-  - ⚪ **Obsidian Mono** (Clean monochrome luxury)
+  - **Cyber Cyan** (Default high-tech neon)
+  - **Neon Purple** (Synthwave / Deep violet)
+  - **Emerald Matrix** (Terminal emerald)
+  - **Sunset Amber** (Warm amber / Cyberpunk)
+  - **Crimson Red** (Aggressive gaming red)
+  - **Obsidian Mono** (Clean monochrome luxury)
 - **Automated First-Run Setup**: On first launch, automatically detects unconfigured environments, runs the complete 6-stage setup pipeline on a background `QThread`, displays live progress, and streams real-time logs.
 - **Android Emulator Player**: Hooks and embeds the Google emulator window directly inside the PySide6 viewport.
 - **Full Player Controls**: Side toolbar providing quick access to:
-  - 🔊 **Volume Up / Down** (`adb input keyevent 24/25`)
-  - 🔄 **Rotate Screen** (Portrait / Landscape toggle)
-  - 📸 **Screenshot** (Captures screen via ADB into `./screenshots/`)
-  - 📱 **Power Button** (Screen lock / wake up)
-  - 🏠 **Home Button** (`adb input keyevent 3`)
-  - ◀ **Back Button** (`adb input keyevent 4`)
-  - ⏹ **Recents / Overview** (`adb input keyevent 187`)
-  - 📦 **Install APK** (File picker or Drag & Drop `.apk` directly onto the window)
-  - ⚙ **Settings Modal** (Instant hardware, spoofing and theme configuration)
-  - ✕ **Shutdown Emulator** (Clean graceful shutdown)
+  - **Volume Up / Down** (`adb input keyevent 24/25`)
+  - **Rotate Screen** (Portrait / Landscape toggle)
+  - **Screenshot** (Captures screen via ADB into `./screenshots/`)
+  - **Power Button** (Screen lock / wake up)
+  - **Home Button** (`adb input keyevent 3`)
+  - **Back Button** (`adb input keyevent 4`)
+  - **Recents / Overview** (`adb input keyevent 187`)
+  - **Install APK** (File picker or Drag & Drop `.apk` directly onto the window)
+  - **Settings Modal** (Instant hardware, spoofing and theme configuration)
+  - **Shutdown Emulator** (Clean graceful shutdown)
 
 ---
 
-## 📦 Standalone Compilation (Nuitka + Clang)
+## Standalone Compilation (Nuitka + Clang)
 
 Anvill is engineered to compile directly into a high-performance standalone Windows binary using Nuitka and Clang:
 
@@ -204,7 +204,7 @@ The output directory `dist/app_gui.dist/` contains the fully portable executable
 
 ---
 
-## ⚙️ Configuration System
+## Configuration System
 
 Anvill strictly separates runtime configuration from hardware profiles:
 
@@ -222,7 +222,7 @@ Contains hardware resource allocations and device spoofing definitions:
 
 ---
 
-## 🔄 How to Change or Upgrade the Android Version
+## How to Change or Upgrade the Android Version
 
 To target a different Android version (for example, Android 17 / API 37, or an ARM64 image), simply update [`config.json`](config.json):
 
@@ -245,7 +245,7 @@ Anvill will dynamically:
 
 ---
 
-## 💻 Command-Line Usage
+## Command-Line Usage
 
 ### Running the Emulator (`src/android_vm.py`)
 
@@ -301,7 +301,7 @@ python src/root_avd.py --spoof-only
 
 ---
 
-## 🧪 Testing
+## Testing
 
 Anvill includes a comprehensive test suite in `testsuit/` covering 100% of the architecture:
 
@@ -315,7 +315,7 @@ python -m unittest discover -s testsuit
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the [MIT License](LICENSE).
 Anvill is an independent open-source tool and is not affiliated with Google or Samsung.

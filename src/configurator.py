@@ -70,6 +70,8 @@ class AvdConfig:
         self["hw.gpu.mode"] = gpu_mode
         self["hw.keyboard"] = "yes"
         self["fastboot.forceColdBoot"] = "no"
+        self["showDeviceFrame"] = "no"
+        self["skin.dynamic"] = "yes"
 
     def atomic_write(self) -> None:
         """Writes the file atomically (UTF-8, no BOM)."""
