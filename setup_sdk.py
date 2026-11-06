@@ -489,22 +489,28 @@ def accept_all_licenses(sdk_root: Path, env: dict[str, str]) -> None:
     sdkmanager_bin = sdk_root / "cmdline-tools" / "latest" / "bin" / ("sdkmanager.bat" if platform.system() == "Windows" else "sdkmanager")
     if sdkmanager_bin.exists():
         try:
-            run(_sdkmanager_cmd(sdk_root, "--licenses"), cwd=sdk_root, env=env, input_text="y\n" * 100)
+            run(_exec_cmd(sdkmanager_bin, f"--sdk_root={sdk_root}", "--licenses"), cwd=sdk_root, env=env, input_text="y\n" * 100)
         except Exception as exc:
             print(f"Note: sdkmanager --licenses check completed ({exc})")
 
 
 def install_sdk_package(sdk_root: Path, package: str, env: dict[str, str]) -> None:
-    """Installs an SDK package using native android CLI when available, or sdkmanager."""
+    """Installs an SDK package using native android CLI when available, or classic sdkmanager."""
     android_bin = sdk_root / "cmdline-tools" / "latest" / "bin" / ("android.exe" if platform.system() == "Windows" else "android")
-    pkg_norm = package.replace(";", "/")
+    pkg_slash = package.replace(";", "/")
+    pkg_semi = package.replace("/", ";") if ("/" in package or ";" in package) else package
+
     if android_bin.exists():
-        cmd = [str(android_bin), f"--sdk={sdk_root}", "sdk", "install", pkg_norm]
+        cmd = [str(android_bin), f"--sdk={sdk_root}", "sdk", "install", pkg_slash]
         run(cmd, cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
         return
 
-    # Fallback to sdkmanager
-    run(_sdkmanager_cmd(sdk_root, pkg_norm), cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
+    # Classic sdkmanager (requires semicolons: e.g. system-images;android-36;google_apis;x86_64)
+    sdkmanager = sdk_root / "cmdline-tools" / "latest" / "bin" / "sdkmanager"
+    if platform.system() == "Windows":
+        sdkmanager = sdkmanager.with_suffix(".bat")
+    cmd = _exec_cmd(sdkmanager, f"--sdk_root={sdk_root}", pkg_semi)
+    run(cmd, cwd=sdk_root, check=True, env=env, input_text="y\n" * 10)
 
 
 def install_packages(sdk_root: Path, packages: Sequence[str], env: dict[str, str]) -> None:
@@ -515,7 +521,7 @@ def install_packages(sdk_root: Path, packages: Sequence[str], env: dict[str, str
         if pkg_norm.startswith("system-images/"):
             parts = pkg_norm.split("/")
             if len(parts) >= 4 and (sdk_root / "system-images" / parts[1] / parts[2] / parts[3]).exists():
-                print(f"Package {pkg_norm} is already installed.")
+                print(f"Package {package} is already installed.")
                 continue
         elif pkg_norm == "emulator" and (sdk_root / "emulator" / "emulator.exe").exists():
             print("Package emulator is already installed.")
@@ -532,15 +538,15 @@ def install_packages(sdk_root: Path, packages: Sequence[str], env: dict[str, str
             print("Package Android_Emulator_Hypervisor_Driver is already installed.")
             continue
 
-        print(f"Installing {pkg_norm}...")
+        print(f"Installing {package}...")
         try:
-            install_sdk_package(sdk_root, pkg_norm, env)
+            install_sdk_package(sdk_root, package, env)
         except Exception as exc:
             # If optional driver fails, warn but continue
-            if "extras" in pkg_norm:
-                print(f"Notice: Optional driver {pkg_norm} skipped or not required ({exc})")
+            if "extras" in package:
+                print(f"Notice: Optional driver {package} skipped or not required ({exc})")
             else:
-                print(f"Warning: Failed to install package {pkg_norm}: {exc}")
+                print(f"Warning: Failed to install package {package}: {exc}")
 
 
 # ---------------------------------------------------------------------------
