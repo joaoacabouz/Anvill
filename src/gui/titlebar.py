@@ -1,4 +1,4 @@
-"""Custom frameless title bar for Anvill GUI with native Windows dragging support."""
+"""Modern custom frameless title bar for Anvill GUI with pinned window controls and native Windows dragging."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QMouseEvent
 from PySide6.QtWidgets import (
     QComboBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -17,7 +18,7 @@ from gui.theme import ThemePalette, list_themes
 
 
 class FramelessTitleBar(QWidget):
-    """Modern custom draggable titlebar with theme selector and window controls."""
+    """Modern custom draggable titlebar with guaranteed top-right window controls."""
 
     theme_changed = Signal(str)
     settings_requested = Signal()
@@ -34,58 +35,56 @@ class FramelessTitleBar(QWidget):
         self.avd_name = avd_name
 
         self.setObjectName("TitleBarWidget")
-        self.setFixedHeight(44)
+        self.setFixedHeight(38)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self._setup_ui()
         self.update_palette(palette)
 
     def _setup_ui(self) -> None:
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 0, 10, 0)
-        layout.setSpacing(10)
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(12, 0, 0, 0)
+        main_layout.setSpacing(8)
 
-        # 1. Branding (Icon + Title + AVD Pill)
+        # 1. Left Branding Section
         self.logo_lbl = QLabel("⚡")
-        logo_font = QFont()
-        logo_font.setPointSize(14)
-        logo_font.setBold(True)
+        logo_font = QFont("Segoe UI", 12, QFont.Bold)
         self.logo_lbl.setFont(logo_font)
 
         self.title_lbl = QLabel("ANVILL")
-        title_font = QFont()
-        title_font.setPointSize(11)
-        title_font.setBold(True)
+        title_font = QFont("Segoe UI", 10, QFont.Bold)
         self.title_lbl.setFont(title_font)
 
         self.avd_badge = QLabel(f"{self.avd_name}")
         self.avd_badge.setProperty("class", "BadgePill")
+        self.avd_badge.setFixedHeight(22)
 
-        layout.addWidget(self.logo_lbl)
-        layout.addWidget(self.title_lbl)
-        layout.addWidget(self.avd_badge)
-
-        layout.addStretch(1)
-
-        # 2. Center Status Badge
-        self.status_badge = QLabel("⚪ Offline")
+        # Status Pill Indicator
+        self.status_badge = QLabel("● Offline")
         self.status_badge.setProperty("class", "StatusOffline")
         self.status_badge.setAlignment(Qt.AlignCenter)
-        self.status_badge.setFixedHeight(24)
-        layout.addWidget(self.status_badge)
+        self.status_badge.setFixedHeight(22)
 
-        layout.addStretch(1)
+        main_layout.addWidget(self.logo_lbl)
+        main_layout.addWidget(self.title_lbl)
+        main_layout.addWidget(self.avd_badge)
+        main_layout.addSpacing(6)
+        main_layout.addWidget(self.status_badge)
 
-        # 3. Right Container for Controls (Keeps them grouped and immune to squeezing)
+        # 2. Draggable Center Spacer (Occupies remaining horizontal room)
+        main_layout.addStretch(1)
+
+        # 3. Right Utility & Window Controls (Strictly pinned to top-right corner)
         right_container = QWidget()
+        right_container.setObjectName("TitleBarRightContainer")
         right_layout = QHBoxLayout(right_container)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(6)
+        right_layout.setSpacing(2)
 
-        # Theme Selector
+        # Theme Selector Dropdown
         self.theme_combo = QComboBox()
         self.theme_combo.setToolTip("Switch Color Theme")
-        self.theme_combo.setFixedWidth(135)
-        self.theme_combo.setFixedHeight(28)
+        self.theme_combo.setFixedWidth(115)
+        self.theme_combo.setFixedHeight(26)
         for tid, tname, accent in list_themes():
             self.theme_combo.addItem(f"🎨 {tname}", tid)
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
@@ -94,35 +93,37 @@ class FramelessTitleBar(QWidget):
         # Settings Button
         self.settings_btn = QPushButton("⚙")
         self.settings_btn.setObjectName("TitleBarSettingsBtn")
-        self.settings_btn.setToolTip("VM Settings & Hardware Profiles")
-        self.settings_btn.setFixedSize(28, 28)
+        self.settings_btn.setToolTip("Settings & Profiles")
+        self.settings_btn.setFixedSize(30, 32)
         self.settings_btn.clicked.connect(self.settings_requested.emit)
         right_layout.addWidget(self.settings_btn)
 
-        # Window Action Buttons
+        right_layout.addSpacing(4)
+
+        # Windows Native-Style Control Buttons (—, 🗖, ✕)
         self.min_btn = QPushButton("—")
         self.min_btn.setObjectName("TitleBarMinBtn")
         self.min_btn.setToolTip("Minimize")
-        self.min_btn.setFixedSize(28, 28)
+        self.min_btn.setFixedSize(38, 38)
         self.min_btn.clicked.connect(self.parent_window.showMinimized)
 
         self.max_btn = QPushButton("🗖")
         self.max_btn.setObjectName("TitleBarMaxBtn")
         self.max_btn.setToolTip("Maximize / Restore")
-        self.max_btn.setFixedSize(28, 28)
+        self.max_btn.setFixedSize(38, 38)
         self.max_btn.clicked.connect(self._toggle_maximize)
 
         self.close_btn = QPushButton("✕")
         self.close_btn.setObjectName("TitleBarCloseBtn")
         self.close_btn.setToolTip("Close")
-        self.close_btn.setFixedSize(28, 28)
+        self.close_btn.setFixedSize(44, 38)
         self.close_btn.clicked.connect(self.parent_window.close)
 
         right_layout.addWidget(self.min_btn)
         right_layout.addWidget(self.max_btn)
         right_layout.addWidget(self.close_btn)
 
-        layout.addWidget(right_container)
+        main_layout.addWidget(right_container)
 
     def _toggle_maximize(self) -> None:
         if self.parent_window.isMaximized():
@@ -138,15 +139,15 @@ class FramelessTitleBar(QWidget):
             self.theme_changed.emit(theme_id)
 
     def set_status(self, state: str) -> None:
-        """Updates the status pill ('offline', 'booting', 'running')."""
+        """Updates the status indicator ('offline', 'booting', 'running')."""
         if state == "running":
-            self.status_badge.setText("🟢 Running")
+            self.status_badge.setText("● Running")
             self.status_badge.setProperty("class", "StatusRunning")
         elif state == "booting":
-            self.status_badge.setText("🟡 Booting...")
+            self.status_badge.setText("● Booting...")
             self.status_badge.setProperty("class", "StatusBooting")
         else:
-            self.status_badge.setText("⚪ Offline")
+            self.status_badge.setText("● Offline")
             self.status_badge.setProperty("class", "StatusOffline")
         self.status_badge.style().unpolish(self.status_badge)
         self.status_badge.style().polish(self.status_badge)
@@ -156,37 +157,44 @@ class FramelessTitleBar(QWidget):
         self.avd_badge.setText(name)
 
     def update_palette(self, palette: ThemePalette) -> None:
-        """Applies theme colors to title bar elements cleanly without cascading side effects."""
+        """Applies theme colors without affecting global child widgets."""
         self.palette = palette
         self.setStyleSheet(f"""
             QWidget#TitleBarWidget {{
                 background-color: {palette.bg_surface};
                 border-bottom: 1px solid {palette.border_color};
             }}
-            QPushButton#TitleBarMinBtn, QPushButton#TitleBarMaxBtn, QPushButton#TitleBarSettingsBtn {{
+            QPushButton#TitleBarSettingsBtn {{
                 background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 6px;
+                border: none;
+                border-radius: 4px;
+                color: {palette.text_secondary};
+                font-size: 14px;
+            }}
+            QPushButton#TitleBarSettingsBtn:hover {{
+                background-color: {palette.accent_dim};
+                color: {palette.accent};
+            }}
+            QPushButton#TitleBarMinBtn, QPushButton#TitleBarMaxBtn {{
+                background-color: transparent;
+                border: none;
                 color: {palette.text_secondary};
                 font-size: 13px;
-                font-weight: 700;
+                font-weight: 600;
             }}
-            QPushButton#TitleBarMinBtn:hover, QPushButton#TitleBarMaxBtn:hover, QPushButton#TitleBarSettingsBtn:hover {{
-                background-color: {palette.accent_dim};
-                border-color: {palette.border_color};
-                color: {palette.accent};
+            QPushButton#TitleBarMinBtn:hover, QPushButton#TitleBarMaxBtn:hover {{
+                background-color: rgba(255, 255, 255, 0.08);
+                color: #FFFFFF;
             }}
             QPushButton#TitleBarCloseBtn {{
                 background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 6px;
+                border: none;
                 color: {palette.text_secondary};
                 font-size: 13px;
-                font-weight: 700;
+                font-weight: 600;
             }}
             QPushButton#TitleBarCloseBtn:hover {{
-                background-color: {palette.danger};
-                border-color: {palette.danger};
+                background-color: #E81123;
                 color: #FFFFFF;
             }}
         """)
@@ -200,7 +208,7 @@ class FramelessTitleBar(QWidget):
             self.theme_combo.setCurrentIndex(idx)
             self.theme_combo.blockSignals(False)
 
-    # Native Window Dragging
+    # Native Window Dragging & Maximizing
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
             win = self.window().windowHandle()

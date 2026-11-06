@@ -35,10 +35,10 @@ THEMES: Dict[str, ThemePalette] = {
         accent="#00E5FF",
         accent_hover="#38EFFF",
         accent_dim="rgba(0, 229, 255, 0.15)",
-        bg_main="#0B0F17",
-        bg_surface="#111823",
-        bg_elevated="#17212F",
-        border_color="#1E2B3D",
+        bg_main="#0D1117",
+        bg_surface="#161B22",
+        bg_elevated="#21262D",
+        border_color="#30363D",
         border_focus="#00E5FF",
         text_primary="#F0F6FC",
         text_secondary="#8B949E",
@@ -71,13 +71,13 @@ THEMES: Dict[str, ThemePalette] = {
         accent="#10B981",
         accent_hover="#34D399",
         accent_dim="rgba(16, 185, 129, 0.18)",
-        bg_main="#061A14",
-        bg_surface="#0B261E",
-        bg_elevated="#11362B",
-        border_color="#1C4B3C",
+        bg_main="#0B1311",
+        bg_surface="#13201C",
+        bg_elevated="#1C2E29",
+        border_color="#26423A",
         border_focus="#10B981",
         text_primary="#ECFDF5",
-        text_secondary="#6EE7B7",
+        text_secondary="#9AE6B4",
         text_accent="#34D399",
         danger="#EF4444",
         success="#10B981",
@@ -107,13 +107,13 @@ THEMES: Dict[str, ThemePalette] = {
         accent="#EF4444",
         accent_hover="#F87171",
         accent_dim="rgba(239, 68, 68, 0.18)",
-        bg_main="#120A0B",
-        bg_surface="#1C1012",
-        bg_elevated="#2A181B",
-        border_color="#422026",
+        bg_main="#140A0C",
+        bg_surface="#1F1013",
+        bg_elevated="#2D171C",
+        border_color="#3F2027",
         border_focus="#EF4444",
         text_primary="#FEF2F2",
-        text_secondary="#B91C1C",
+        text_secondary="#FCA5A5",
         text_accent="#F87171",
         danger="#EF4444",
         success="#10B981",
@@ -139,44 +139,47 @@ THEMES: Dict[str, ThemePalette] = {
     ),
 }
 
-DEFAULT_THEME_ID = "cyber_cyan"
 
-
-def get_theme(theme_id: str | None = None) -> ThemePalette:
-    """Retrieves palette by theme ID, falling back to default."""
-    if not theme_id or theme_id not in THEMES:
-        return THEMES[DEFAULT_THEME_ID]
-    return THEMES[theme_id]
+def get_theme(theme_id: str) -> ThemePalette:
+    """Retrieves a theme palette by id, falling back to cyber_cyan."""
+    return THEMES.get(theme_id, THEMES["cyber_cyan"])
 
 
 def list_themes() -> List[Tuple[str, str, str]]:
-    """Returns list of (id, display_name, accent_hex)."""
+    """Returns list of (id, display_name, accent_hex) for UI selectors."""
     return [(p.id, p.name, p.accent) for p in THEMES.values()]
 
 
 def generate_qss(palette: ThemePalette) -> str:
-    """Generates the full modern Qt stylesheet for the application."""
+    """Generates a complete, cohesive QSS stylesheet using the theme palette."""
     return f"""
-    /* Global Application Styles */
-    QWidget {{
-        background-color: {palette.bg_main};
-        color: {palette.text_primary};
-        font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    /* Global Reset & Base Styling */
+    * {{
+        font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, sans-serif;
         font-size: 13px;
+        color: {palette.text_primary};
         outline: none;
+    }}
+
+    QWidget {{
+        background-color: transparent;
+    }}
+
+    QMainWindow, QDialog {{
+        background-color: {palette.bg_main};
     }}
 
     /* Card Panels & Surfaces */
     .SurfaceCard {{
         background-color: {palette.bg_surface};
         border: 1px solid {palette.border_color};
-        border-radius: 12px;
+        border-radius: 8px;
     }}
 
     .ElevatedCard {{
         background-color: {palette.bg_elevated};
         border: 1px solid {palette.border_color};
-        border-radius: 10px;
+        border-radius: 8px;
     }}
 
     /* Buttons */
@@ -184,10 +187,9 @@ def generate_qss(palette: ThemePalette) -> str:
         background-color: {palette.bg_elevated};
         color: {palette.text_primary};
         border: 1px solid {palette.border_color};
-        border-radius: 8px;
-        padding: 8px 16px;
+        border-radius: 6px;
+        padding: 6px 14px;
         font-weight: 600;
-        min-height: 20px;
     }}
 
     QPushButton:hover {{
@@ -212,9 +214,9 @@ def generate_qss(palette: ThemePalette) -> str:
         background-color: {palette.accent};
         color: #000000;
         border: none;
-        border-radius: 8px;
-        padding: 10px 20px;
-        font-size: 14px;
+        border-radius: 6px;
+        padding: 8px 18px;
+        font-size: 13px;
         font-weight: 700;
     }}
 
@@ -232,8 +234,8 @@ def generate_qss(palette: ThemePalette) -> str:
         background-color: rgba(239, 68, 68, 0.15);
         color: {palette.danger};
         border: 1px solid {palette.danger};
-        border-radius: 8px;
-        padding: 8px 16px;
+        border-radius: 6px;
+        padding: 6px 14px;
         font-weight: 600;
     }}
 
@@ -242,23 +244,24 @@ def generate_qss(palette: ThemePalette) -> str:
         color: #FFFFFF;
     }}
 
-    /* Toolbar Action Buttons (Player Bar) */
+    /* Side Toolbar Buttons (Android Player Bar) */
     QPushButton.ToolButton {{
-        background-color: {palette.bg_surface};
+        background-color: transparent;
         color: {palette.text_primary};
-        border: 1px solid {palette.border_color};
-        border-radius: 8px;
-        padding: 8px;
-        min-width: 36px;
-        max-width: 36px;
-        min-height: 36px;
-        max-height: 36px;
-        font-size: 16px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 0px;
+        min-width: 34px;
+        max-width: 34px;
+        min-height: 34px;
+        max-height: 34px;
+        font-size: 14px;
+        font-weight: 600;
     }}
 
     QPushButton.ToolButton:hover {{
         background-color: {palette.accent_dim};
-        border-color: {palette.accent};
+        border-color: {palette.border_color};
         color: {palette.accent};
     }}
 
@@ -272,8 +275,8 @@ def generate_qss(palette: ThemePalette) -> str:
         background-color: {palette.bg_elevated};
         color: {palette.text_primary};
         border: 1px solid {palette.border_color};
-        border-radius: 8px;
-        padding: 8px 12px;
+        border-radius: 6px;
+        padding: 6px 10px;
         selection-background-color: {palette.accent};
         selection-color: #000000;
     }}
@@ -287,9 +290,9 @@ def generate_qss(palette: ThemePalette) -> str:
         background-color: {palette.bg_elevated};
         color: {palette.text_primary};
         border: 1px solid {palette.border_color};
-        border-radius: 8px;
-        padding: 8px 12px;
-        min-height: 20px;
+        border-radius: 6px;
+        padding: 4px 10px;
+        min-height: 22px;
     }}
 
     QComboBox:hover {{
@@ -299,7 +302,7 @@ def generate_qss(palette: ThemePalette) -> str:
     QComboBox::drop-down {{
         subcontrol-origin: padding;
         subcontrol-position: top right;
-        width: 25px;
+        width: 20px;
         border-left: none;
     }}
 
@@ -307,122 +310,47 @@ def generate_qss(palette: ThemePalette) -> str:
         background-color: {palette.bg_surface};
         color: {palette.text_primary};
         border: 1px solid {palette.border_color};
-        border-radius: 8px;
+        border-radius: 6px;
         selection-background-color: {palette.accent_dim};
         selection-color: {palette.accent};
         outline: none;
-        padding: 4px;
-    }}
-
-    /* CheckBoxes */
-    QCheckBox {{
-        spacing: 8px;
-        color: {palette.text_primary};
-        font-weight: 500;
-    }}
-
-    QCheckBox::indicator {{
-        width: 18px;
-        height: 18px;
-        border-radius: 4px;
-        border: 1px solid {palette.border_color};
-        background-color: {palette.bg_elevated};
-    }}
-
-    QCheckBox::indicator:hover {{
-        border-color: {palette.accent};
-    }}
-
-    QCheckBox::indicator:checked {{
-        background-color: {palette.accent};
-        border-color: {palette.accent};
+        padding: 2px;
     }}
 
     /* Progress Bar */
     QProgressBar {{
         background-color: {palette.bg_elevated};
         border: 1px solid {palette.border_color};
-        border-radius: 6px;
+        border-radius: 4px;
         text-align: center;
         color: {palette.text_primary};
         font-size: 11px;
         font-weight: 700;
-        height: 16px;
+        height: 14px;
     }}
 
     QProgressBar::chunk {{
-        background: qlineargradient(
-            x1: 0, y1: 0, x2: 1, y2: 0,
-            stop: 0 {palette.accent},
-            stop: 1 {palette.accent_hover}
-        );
-        border-radius: 5px;
-    }}
-
-    /* Scrollbars */
-    QScrollBar:vertical {{
-        background: {palette.bg_main};
-        width: 8px;
-        margin: 0;
-        border-radius: 4px;
-    }}
-
-    QScrollBar::handle:vertical {{
-        background: {palette.border_color};
-        min-height: 25px;
-        border-radius: 4px;
-    }}
-
-    QScrollBar::handle:vertical:hover {{
         background: {palette.accent};
+        border-radius: 3px;
     }}
 
-    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-        height: 0px;
-    }}
-
-    QScrollBar:horizontal {{
-        background: {palette.bg_main};
-        height: 8px;
-        margin: 0;
-        border-radius: 4px;
-    }}
-
-    QScrollBar::handle:horizontal {{
-        background: {palette.border_color};
-        min-width: 25px;
-        border-radius: 4px;
-    }}
-
-    QScrollBar::handle:horizontal:hover {{
-        background: {palette.accent};
-    }}
-
-    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-        width: 0px;
-    }}
-
-    /* Labels & Badges */
-    QLabel {{
-        background: transparent;
-    }}
-
+    /* Badges & Status Indicators */
     .BadgePill {{
         background-color: {palette.accent_dim};
         color: {palette.accent};
-        border: 1px solid {palette.accent};
-        border-radius: 12px;
-        padding: 4px 10px;
+        border: 1px solid {palette.border_color};
+        border-radius: 11px;
+        padding: 2px 8px;
         font-size: 11px;
-        font-weight: 700;
+        font-weight: 600;
     }}
 
     .StatusRunning {{
         background-color: rgba(16, 185, 129, 0.15);
         color: {palette.success};
         border: 1px solid {palette.success};
-        border-radius: 10px;
-        padding: 3px 8px;
+        border-radius: 11px;
+        padding: 2px 8px;
         font-size: 11px;
         font-weight: 600;
     }}
@@ -431,8 +359,8 @@ def generate_qss(palette: ThemePalette) -> str:
         background-color: rgba(245, 158, 11, 0.15);
         color: {palette.warning};
         border: 1px solid {palette.warning};
-        border-radius: 10px;
-        padding: 3px 8px;
+        border-radius: 11px;
+        padding: 2px 8px;
         font-size: 11px;
         font-weight: 600;
     }}
@@ -441,8 +369,8 @@ def generate_qss(palette: ThemePalette) -> str:
         background-color: rgba(148, 163, 184, 0.12);
         color: {palette.text_secondary};
         border: 1px solid {palette.border_color};
-        border-radius: 10px;
-        padding: 3px 8px;
+        border-radius: 11px;
+        padding: 2px 8px;
         font-size: 11px;
         font-weight: 600;
     }}
@@ -452,9 +380,8 @@ def generate_qss(palette: ThemePalette) -> str:
         background-color: {palette.bg_surface};
         color: {palette.text_primary};
         border: 1px solid {palette.border_color};
-        border-radius: 6px;
-        padding: 6px 10px;
+        border-radius: 4px;
+        padding: 4px 8px;
         font-size: 12px;
     }}
     """
-

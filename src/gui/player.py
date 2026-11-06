@@ -1,4 +1,4 @@
-"""Android Emulator Player widget with pure Win32 window embedding, aspect ratio preservation and side toolbar controls."""
+"""Android Emulator Player widget with pure Win32 window embedding, tablet landscape aspect ratio and polished side toolbar."""
 
 from __future__ import annotations
 
@@ -44,7 +44,6 @@ if platform.system() == "Windows":
     user32 = ctypes.windll.user32
     WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
 
-    # 64-bit safe prototypes
     SetWindowLongPtr = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
     SetWindowLongPtr.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
     SetWindowLongPtr.restype = ctypes.c_ssize_t
@@ -72,11 +71,7 @@ else:
 
 
 def find_emulator_windows(avd_name: str, target_pid: Optional[int] = None) -> Tuple[Optional[int], Optional[int]]:
-    """Locates the emulator display HWND and any auxiliary floating toolbar HWND.
-
-    Returns:
-        (display_hwnd, toolbar_hwnd)
-    """
+    """Locates the emulator display HWND and any auxiliary floating toolbar HWND."""
     if not user32:
         return None, None
 
@@ -146,13 +141,11 @@ def embed_and_reparent_display(child_hwnd: int, parent_hwnd: int) -> bool:
         return False
 
     try:
-        # Strip top-level borders, caption, popups and minimize/maximize buttons
         style = GetWindowLongPtr(child_hwnd, GWL_STYLE)
         style &= ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU)
         style |= (WS_CHILD | WS_VISIBLE)
         SetWindowLongPtr(child_hwnd, GWL_STYLE, ctypes.c_ssize_t(style).value)
 
-        # Reparent directly to the viewport frame
         user32.SetParent(child_hwnd, parent_hwnd)
         return True
     except Exception as exc:
@@ -165,7 +158,7 @@ def embed_and_reparent_display(child_hwnd: int, parent_hwnd: int) -> bool:
 # ---------------------------------------------------------------------------
 
 class EmulatorBootWorker(QThread):
-    """Starts the emulator process and awaits boot completion in background."""
+    """Starts the emulator process, enforces tablet resolution and awaits boot completion in background."""
 
     status_signal = Signal(str)
     booted_signal = Signal(bool, str)
@@ -224,10 +217,17 @@ class EmulatorBootWorker(QThread):
                 self.booted_signal.emit(False, "Android boot timed out.")
                 return
 
+            # Enforce 16:9 Tablet Landscape resolution and orientation in Android OS
+            self.status_signal.emit("Configuring Tablet Landscape Display...")
+            self.adb.run("shell", "wm", "size", f"{profile.width}x{profile.height}")
+            self.adb.run("shell", "wm", "density", str(profile.dpi))
+            self.adb.run("shell", "settings", "put", "system", "accelerometer_rotation", "0")
+            self.adb.run("shell", "settings", "put", "system", "user_rotation", "0")
+
             self.status_signal.emit("Injecting device spoofing & anti-detection...")
             self.adb.apply_spoof(spoof)
 
-            self.status_signal.emit("✓ Emulator running and ready!")
+            self.status_signal.emit("✓ Android Tablet ready and running!")
             self.booted_signal.emit(True, "")
         except Exception as exc:
             self.booted_signal.emit(False, str(exc))
@@ -238,7 +238,7 @@ class EmulatorBootWorker(QThread):
 # ---------------------------------------------------------------------------
 
 class PlayerView(QWidget):
-    """Main Android Player container with embedded emulator viewport and side control bar."""
+    """Main Android Player container with embedded emulator viewport and polished side control bar."""
 
     status_changed = Signal(str)
 
@@ -257,7 +257,6 @@ class PlayerView(QWidget):
         self.is_landscape: bool = True
         self._embed_timer: Optional[QTimer] = None
         self._detect_timer: Optional[QTimer] = None
-        self._sync_timer: Optional[QTimer] = None
 
         self.setAcceptDrops(True)
         self._setup_ui()
@@ -266,8 +265,8 @@ class PlayerView(QWidget):
 
     def _setup_ui(self) -> None:
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(6, 6, 6, 6)
+        main_layout.setSpacing(6)
 
         # Central Viewport Area (Stacked: Dashboard -> Player Viewport)
         self.stack = QStackedWidget()
@@ -282,7 +281,7 @@ class PlayerView(QWidget):
 
         main_layout.addWidget(self.stack, stretch=1)
 
-        # Side Toolbar Controls
+        # Side Toolbar Controls (Flush right dock)
         self.toolbar = self._create_side_toolbar()
         main_layout.addWidget(self.toolbar)
 
@@ -298,47 +297,47 @@ class PlayerView(QWidget):
 
         card = QWidget()
         card.setProperty("class", "SurfaceCard")
-        card.setFixedSize(620, 460)
+        card.setFixedSize(580, 420)
         c_layout = QVBoxLayout(card)
-        c_layout.setContentsMargins(36, 26, 36, 26)
+        c_layout.setContentsMargins(32, 24, 32, 24)
         c_layout.setSpacing(14)
 
         # Header Title
         title_box = QHBoxLayout()
         icon = QLabel("📱")
-        icon.setFont(QFont("Segoe UI Emoji", 28))
-        title = QLabel("Android Virtual Machine")
-        title.setFont(QFont("Segoe UI", 17, QFont.Bold))
+        icon.setFont(QFont("Segoe UI Emoji", 26))
+        title = QLabel("Android Tablet Player")
+        title.setFont(QFont("Segoe UI", 16, QFont.Bold))
         title_box.addWidget(icon)
         title_box.addWidget(title)
         title_box.addStretch()
         c_layout.addLayout(title_box)
 
-        desc = QLabel("Configure hardware profile and launch your isolated Android VM player.")
+        desc = QLabel("Select hardware configuration and launch your isolated Android VM session.")
         desc.setStyleSheet("color: #8B949E; font-size: 13px;")
         c_layout.addWidget(desc)
 
-        # Detection Banner (When emulator is already running outside)
+        # Active Running Detection Banner
         self.detected_banner = QWidget()
         self.detected_banner.setProperty("class", "ElevatedCard")
-        self.detected_banner.setStyleSheet("background-color: rgba(16, 185, 129, 0.1); border: 1px solid #10B981; border-radius: 8px;")
+        self.detected_banner.setStyleSheet("background-color: rgba(16, 185, 129, 0.1); border: 1px solid #10B981; border-radius: 6px;")
         self.detected_banner.setVisible(False)
         db_layout = QHBoxLayout(self.detected_banner)
-        db_layout.setContentsMargins(12, 8, 12, 8)
+        db_layout.setContentsMargins(12, 6, 12, 6)
 
-        self.detected_lbl = QLabel("⚡ Running Android Emulator detected on desktop!")
+        self.detected_lbl = QLabel("⚡ Running Emulator window detected on desktop!")
         self.detected_lbl.setStyleSheet("color: #10B981; font-weight: 600; font-size: 12px;")
         self.attach_btn = QPushButton("Dock Inside App")
         self.attach_btn.setProperty("class", "PrimaryButton")
-        self.attach_btn.setFixedHeight(28)
+        self.attach_btn.setFixedHeight(26)
         self.attach_btn.clicked.connect(self._attach_detected_window)
         db_layout.addWidget(self.detected_lbl, stretch=1)
         db_layout.addWidget(self.attach_btn)
         c_layout.addWidget(self.detected_banner)
 
-        c_layout.addSpacing(6)
+        c_layout.addSpacing(4)
 
-        # Hardware & Spoofing Options
+        # Options Box
         opts_box = QVBoxLayout()
         opts_box.setSpacing(8)
 
@@ -366,9 +365,9 @@ class PlayerView(QWidget):
         c_layout.addSpacing(10)
 
         # Big Launch Button
-        self.launch_btn = QPushButton("▶ Launch Android Emulator")
+        self.launch_btn = QPushButton("▶ Launch Android Tablet")
         self.launch_btn.setProperty("class", "PrimaryButton")
-        self.launch_btn.setMinimumHeight(46)
+        self.launch_btn.setMinimumHeight(44)
         self.launch_btn.clicked.connect(self._start_emulator)
         c_layout.addWidget(self.launch_btn)
 
@@ -385,11 +384,11 @@ class PlayerView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Dedicated Viewport Frame with native Win32 window attribute
+        # Viewport Frame with native Win32 window attribute
         self.viewport_frame = QWidget()
         self.viewport_frame.setAttribute(Qt.WA_NativeWindow, True)
         self.viewport_frame.setObjectName("PlayerViewportFrame")
-        self.viewport_frame.setStyleSheet("background-color: #000000; border-radius: 8px;")
+        self.viewport_frame.setStyleSheet("background-color: #000000; border-radius: 6px;")
 
         vf_layout = QVBoxLayout(self.viewport_frame)
         vf_layout.setAlignment(Qt.AlignCenter)
@@ -399,14 +398,14 @@ class PlayerView(QWidget):
         self.boot_overlay = QWidget(self.viewport_frame)
         bo_layout = QVBoxLayout(self.boot_overlay)
         bo_layout.setAlignment(Qt.AlignCenter)
-        bo_layout.setSpacing(12)
+        bo_layout.setSpacing(10)
 
         spinner = QLabel("⚡")
-        spinner.setFont(QFont("Segoe UI Emoji", 36))
+        spinner.setFont(QFont("Segoe UI Emoji", 34))
         spinner.setAlignment(Qt.AlignCenter)
 
-        self.boot_title_lbl = QLabel("Starting Android Emulator...")
-        self.boot_title_lbl.setFont(QFont("Segoe UI", 16, QFont.Bold))
+        self.boot_title_lbl = QLabel("Starting Android Tablet...")
+        self.boot_title_lbl.setFont(QFont("Segoe UI", 15, QFont.Bold))
         self.boot_title_lbl.setStyleSheet("color: #FFFFFF;")
         self.boot_title_lbl.setAlignment(Qt.AlignCenter)
 
@@ -423,50 +422,60 @@ class PlayerView(QWidget):
         return page
 
     # -----------------------------------------------------------------------
-    # Side Toolbar
+    # Polished Side Toolbar
     # -----------------------------------------------------------------------
 
     def _create_side_toolbar(self) -> QWidget:
         toolbar = QWidget()
-        toolbar.setProperty("class", "ElevatedCard")
-        toolbar.setFixedWidth(52)
+        toolbar.setObjectName("SideToolBarWidget")
+        toolbar.setFixedWidth(46)
+        toolbar.setStyleSheet(f"""
+            QWidget#SideToolBarWidget {{
+                background-color: {self.palette.bg_surface};
+                border: 1px solid {self.palette.border_color};
+                border-radius: 6px;
+            }}
+        """)
         t_layout = QVBoxLayout(toolbar)
-        t_layout.setContentsMargins(6, 12, 6, 12)
-        t_layout.setSpacing(8)
+        t_layout.setContentsMargins(4, 8, 4, 8)
+        t_layout.setSpacing(6)
 
-        # Hardware Buttons
-        self.power_btn = self._make_tool_btn("⏻", "Power Button (Lock / Unlock)", self._on_power)
-        self.vol_up_btn = self._make_tool_btn("🔊", "Volume Up", self._on_vol_up)
-        self.vol_down_btn = self._make_tool_btn("🔉", "Volume Down", self._on_vol_down)
-        self.rotate_btn = self._make_tool_btn("🔄", "Rotate Screen", self._on_rotate)
-        self.shot_btn = self._make_tool_btn("📸", "Take Screenshot", self._on_screenshot)
-        self.apk_btn = self._make_tool_btn("📦", "Install APK File", self._on_install_apk)
+        # Quick Actions
+        self.fs_btn = self._make_tool_btn("⛶", "Toggle Fullscreen", self._on_toggle_fullscreen)
+        self.vol_up_btn = self._make_tool_btn("＋", "Volume Up", self._on_vol_up)
+        self.vol_down_btn = self._make_tool_btn("－", "Volume Down", self._on_vol_down)
+        self.rotate_btn = self._make_tool_btn("↻", "Rotate Orientation (Landscape / Portrait)", self._on_rotate)
+        self.shot_btn = self._make_tool_btn("📷", "Take Screenshot", self._on_screenshot)
+        self.apk_btn = self._make_tool_btn("APK", "Install APK File", self._on_install_apk)
 
-        t_layout.addWidget(self.power_btn)
+        t_layout.addWidget(self.fs_btn)
         t_layout.addWidget(self.vol_up_btn)
         t_layout.addWidget(self.vol_down_btn)
         t_layout.addWidget(self.rotate_btn)
         t_layout.addWidget(self.shot_btn)
         t_layout.addWidget(self.apk_btn)
 
-        t_layout.addStretch()
+        # Separator line
+        t_layout.addWidget(self._make_separator())
+        t_layout.addStretch(1)
 
         # Android Navigation Keys
         self.back_btn = self._make_tool_btn("◀", "Back", self._on_back)
-        self.home_btn = self._make_tool_btn("⚪", "Home", self._on_home)
-        self.recents_btn = self._make_tool_btn("⏹", "Recent Apps", self._on_recents)
+        self.home_btn = self._make_tool_btn("●", "Home", self._on_home)
+        self.recents_btn = self._make_tool_btn("■", "Recent Apps", self._on_recents)
 
         t_layout.addWidget(self.back_btn)
         t_layout.addWidget(self.home_btn)
         t_layout.addWidget(self.recents_btn)
 
-        t_layout.addStretch()
+        t_layout.addStretch(1)
+        t_layout.addWidget(self._make_separator())
 
-        # Stop VM Button
-        self.stop_btn = QPushButton("✕")
+        # Stop VM Button (Clean subtle red)
+        self.stop_btn = QPushButton("⏻")
         self.stop_btn.setProperty("class", "ToolButton")
-        self.stop_btn.setToolTip("Shutdown Emulator")
-        self.stop_btn.setStyleSheet("background-color: rgba(239, 68, 68, 0.15); color: #EF4444; border-color: #EF4444;")
+        self.stop_btn.setToolTip("Shutdown Virtual Machine")
+        self.stop_btn.setStyleSheet("color: #EF4444;")
         self.stop_btn.clicked.connect(self._stop_emulator)
         t_layout.addWidget(self.stop_btn)
 
@@ -479,8 +488,23 @@ class PlayerView(QWidget):
         btn.clicked.connect(callback)
         return btn
 
+    def _make_separator(self) -> QWidget:
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Plain)
+        line.setStyleSheet(f"background-color: {self.palette.border_color}; max-height: 1px; border: none;")
+        return line
+
     def update_palette(self, palette: ThemePalette) -> None:
         self.palette = palette
+        if hasattr(self, "toolbar"):
+            self.toolbar.setStyleSheet(f"""
+                QWidget#SideToolBarWidget {{
+                    background-color: {palette.bg_surface};
+                    border: 1px solid {palette.border_color};
+                    border-radius: 6px;
+                }}
+            """)
 
     # -----------------------------------------------------------------------
     # Detection & Embedding Operations
@@ -513,16 +537,14 @@ class PlayerView(QWidget):
         self.status_changed.emit("running")
 
     def _start_emulator(self) -> None:
-        # Check if already running
         disp_hwnd, tb_hwnd = find_emulator_windows(self.avd_name)
         if disp_hwnd:
             self._attach_detected_window()
             return
 
-        # Switch immediately to viewport page with boot overlay
         self.boot_overlay.setVisible(True)
-        self.boot_title_lbl.setText("Booting Android Emulator...")
-        self.boot_status_lbl.setText("Starting QEMU engine & hooking viewport...")
+        self.boot_title_lbl.setText("Starting Android Tablet...")
+        self.boot_status_lbl.setText("Initializing QEMU engine in 16:9 widescreen...")
         self.stack.setCurrentIndex(1)
         self.status_changed.emit("booting")
 
@@ -533,12 +555,12 @@ class PlayerView(QWidget):
             avd_name=self.avd_name,
             hw_profile=hw,
             spoof_profile=spoof,
+            cold_boot=False,
         )
         self.boot_worker.status_signal.connect(self.boot_status_lbl.setText)
         self.boot_worker.booted_signal.connect(self._on_boot_result)
         self.boot_worker.start()
 
-        # Rapid polling (150ms) to capture the window as soon as QEMU initializes
         self._start_fast_embedding_poll()
 
     def _start_fast_embedding_poll(self) -> None:
@@ -567,7 +589,6 @@ class PlayerView(QWidget):
         if self._embed_timer:
             self._embed_timer.stop()
 
-        # Hide any auxiliary floating toolbars created by emulator
         if user32 and tb_hwnd:
             user32.ShowWindow(tb_hwnd, SW_HIDE)
 
@@ -577,12 +598,10 @@ class PlayerView(QWidget):
             self.boot_overlay.setVisible(False)
             self._sync_geometry()
 
-            # Start periodic safety geometry synchronization timer
-            if not self._sync_timer:
-                self._sync_timer = QTimer(self)
-                self._sync_timer.setInterval(500)
-                self._sync_timer.timeout.connect(self._sync_geometry)
-                self._sync_timer.start()
+            # Fast check if device is already booted
+            res = self.adb.run("shell", "getprop", "sys.boot_completed", timeout=3)
+            if res.stdout.strip() == "1":
+                self.status_changed.emit("running")
 
     def _sync_geometry(self) -> None:
         """Calculates centered aspect-ratio geometry and positions the Android tablet display inside the viewport."""
@@ -592,13 +611,13 @@ class PlayerView(QWidget):
         vp_w = max(100, self.viewport_frame.width())
         vp_h = max(100, self.viewport_frame.height())
 
-        # Tablet 16:9 landscape aspect ratio (horizontal)
+        # Tablet 16:9 widescreen aspect ratio (landscape horizontal)
         ratio = (16.0 / 9.0) if self.is_landscape else (9.0 / 16.0)
 
-        target_w = max(100, vp_w - 12)
+        target_w = max(100, vp_w - 8)
         target_h = int(target_w / ratio)
-        if target_h > vp_h - 12:
-            target_h = max(100, vp_h - 12)
+        if target_h > vp_h - 8:
+            target_h = max(100, vp_h - 8)
             target_w = int(target_h * ratio)
 
         offset_x = (vp_w - target_w) // 2
@@ -632,9 +651,6 @@ class PlayerView(QWidget):
     def _cleanup_session(self) -> None:
         if self._embed_timer:
             self._embed_timer.stop()
-        if self._sync_timer:
-            self._sync_timer.stop()
-            self._sync_timer = None
         self.embedded_hwnd = None
         self.boot_overlay.setVisible(True)
 
@@ -660,6 +676,13 @@ class PlayerView(QWidget):
     # Android Key Controls
     # -----------------------------------------------------------------------
 
+    def _on_toggle_fullscreen(self) -> None:
+        win = self.window()
+        if win.isFullScreen():
+            win.showNormal()
+        else:
+            win.showFullScreen()
+
     def _on_power(self) -> None:
         self.adb.run("shell", "input", "keyevent", "26")
 
@@ -670,12 +693,10 @@ class PlayerView(QWidget):
         self.adb.run("shell", "input", "keyevent", "25")
 
     def _on_rotate(self) -> None:
-        # Toggle orientation state (0 = natural tablet landscape, 1 = 90deg portrait)
         self.is_landscape = not self.is_landscape
         rot_val = "0" if self.is_landscape else "1"
         self.adb.run("shell", "settings", "put", "system", "accelerometer_rotation", "0")
         self.adb.run("shell", "settings", "put", "system", "user_rotation", rot_val)
-        # Recenter geometry
         self._sync_geometry()
 
     def _on_back(self) -> None:
