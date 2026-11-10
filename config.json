@@ -5,7 +5,7 @@
     "default_hardware_profile": "auto",
     "default_spoof_profile": "galaxy_tab_s9",
     "default_gpu_mode": "auto",
-    "cold_boot": false,
+    "cold_boot": true,
     "safe_gpu": false,
     "no_boot_anim": false,
     "writable_system": false,
@@ -14,12 +14,18 @@
       "max_fps": 120,
       "video_bit_rate": "16M"
     },
-    "theme": "cyber_cyan"
+    "theme": "crimson_red"
   },
   "debloat": {
     "enabled_by_default": true,
     "bloatware_packages": [
       "com.google.android.googlequicksearchbox",
+      "com.google.android.gm",
+      "com.google.android.apps.messaging",
+      "com.google.android.dialer",
+      "com.google.android.apps.wellbeing",
+      "com.google.android.apps.safetyhub",
+      "com.google.android.apps.wallpaper",
       "com.google.android.apps.maps",
       "com.google.android.youtube",
       "com.google.android.apps.youtube.music",
@@ -114,7 +120,7 @@
     ],
     "settings_overrides": {
       "global": {
-        "adb_enabled": "0",
+        "adb_enabled": "1",
         "development_settings_enabled": "0",
         "package_verifier_user_consent": "1",
         "install_non_market_apps": "1"

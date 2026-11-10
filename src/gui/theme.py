@@ -291,7 +291,7 @@ def generate_qss(palette: ThemePalette) -> str:
         color: {palette.text_primary};
         border: 1px solid {palette.border_color};
         border-radius: 6px;
-        padding: 4px 18px 4px 8px;
+        padding: 4px 26px 4px 10px;
         min-height: 24px;
     }}
 

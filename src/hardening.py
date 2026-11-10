@@ -83,7 +83,10 @@ def build_anti_detection_script(props: dict[str, str], config: dict[str, Any] | 
     settings_overrides = hardening.get("settings_overrides", {})
     for namespace, kv in settings_overrides.items():
         for skey, sval in kv.items():
+            if skey == "adb_enabled":
+                continue
             lines.append(f"settings put {namespace} {skey} {sval} 2>/dev/null")
+    lines.append("settings put global adb_enabled 1 2>/dev/null")
 
     lines.extend([
         "",
@@ -217,9 +220,9 @@ def apply_real_device_hardening(
         if res.returncode == 0:
             applied_count += 1
 
-    # 4. Hide developer flags in Android Settings
+    # 4. Hide developer flags in Android Settings (ensuring ADB remains enabled for host player)
     settings_cmd = (
-        "settings put global adb_enabled 0; "
+        "settings put global adb_enabled 1; "
         "settings put global development_settings_enabled 0; "
         "settings put secure mock_location 0"
     )

@@ -1,18 +1,37 @@
 @echo off
 setlocal
-chcp 65001 >nul
-set PYTHONUTF8=1
-set PYTHONIOENCODING=utf-8
 cd /d "%~dp0"
 
-set PY=python
-if exist "%~dp0.venv\Scripts\python.exe" set PY="%~dp0.venv\Scripts\python.exe"
+:: Create logs folder if it doesn't exist
+if not exist "logs" mkdir "logs"
 
-REM Pure-Python entrypoint (logic is 100% in Python)
-%PY% src\android_vm.py %*
-
-if errorlevel 1 (
-    echo.
-    echo An error occurred. Press any key to exit...
-    pause >nul
+:: 1. Prefer local virtual environment pythonw (pure GUI, completely hidden console window)
+if exist ".venv\Scripts\pythonw.exe" (
+    start "" ".venv\Scripts\pythonw.exe" "src\app_gui.py" %*
+    exit /b 0
 )
+
+:: 2. Fallback to venv python.exe in background
+if exist ".venv\Scripts\python.exe" (
+    start "" /b ".venv\Scripts\python.exe" "src\app_gui.py" %*
+    exit /b 0
+)
+
+:: 3. Fallback to system pythonw
+where pythonw >nul 2>&1
+if %errorlevel% equ 0 (
+    start "" pythonw "src\app_gui.py" %*
+    exit /b 0
+)
+
+:: 4. Fallback to system python
+where python >nul 2>&1
+if %errorlevel% equ 0 (
+    start "" /b python "src\app_gui.py" %*
+    exit /b 0
+)
+
+echo [ERROR] Python not found. Please install Python 3.10+ and requirements.
+pause
+exit /b 1
+

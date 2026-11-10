@@ -69,7 +69,11 @@ class AvdConfig:
         self["hw.gpu.enabled"] = "yes"
         self["hw.gpu.mode"] = gpu_mode
         self["hw.keyboard"] = "yes"
-        self["fastboot.forceColdBoot"] = "no"
+        self["fastboot.forceColdBoot"] = "yes"
+        self["fastboot.forceFastBoot"] = "no"
+        self["firstboot.bootFromDownloadableSnapshot"] = "no"
+        self["firstboot.bootFromLocalSnapshot"] = "no"
+        self["firstboot.saveToLocalSnapshot"] = "no"
         self["showDeviceFrame"] = "no"
         self["skin.dynamic"] = "yes"
         self["hw.initialOrientation"] = "landscape"

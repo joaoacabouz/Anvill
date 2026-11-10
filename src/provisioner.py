@@ -107,6 +107,7 @@ def get_portable_env(
     env["ANDROID_USER_HOME"] = str(user_home)
     env["ANDROID_AVD_HOME"] = str(avd_root)
     env["ANDROID_EMULATOR_HOME"] = str(user_home)
+    env["ANDROID_SERIAL"] = "emulator-5554"
 
     paths_to_add: list[str] = []
     if (jdk_root / "bin").exists():

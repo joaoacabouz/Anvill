@@ -92,9 +92,9 @@ class TestDebloatAndHardening(unittest.TestCase):
         self.assertIn("del_prop ro.boot.qemu", script)
         self.assertIn("del_prop()", script)
 
-        # Verify Settings.Global overrides
+        # Verify Settings.Global overrides (keeping adb enabled for host player)
         self.assertIn("settings put global development_settings_enabled 0", script)
-        self.assertIn("settings put global adb_enabled 0", script)
+        self.assertIn("settings put global adb_enabled 1", script)
 
         # Verify Magisk DenyList commands
         self.assertIn("magisk --denylist enable", script)

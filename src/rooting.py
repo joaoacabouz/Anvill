@@ -59,6 +59,162 @@ def _log(msg: str) -> None:
         print(msg)
 
 
+def patch_ramdisk_with_magisk_offline(
+    ramdisk_path: Path,
+    tools_dir: Path = TOOLS_ROOT,
+    avd_root: Path = AVD_ROOT,
+    avd_name: str = DEFAULT_AVD_NAME,
+) -> bool:
+    """Offline patches the Android ramdisk with Magisk 31.1 binaries without requiring a running VM."""
+    import zipfile
+
+    mb = tools_dir / "magiskboot" / "magiskboot.exe"
+    magisk_zip = tools_dir / "rootAVD" / "Magisk.zip"
+
+    if not mb.exists() or not magisk_zip.exists():
+        _log(f"[bold red]Magisk tools missing:[/bold red] {mb} or {magisk_zip}")
+        return False
+
+    backup_path = ramdisk_path.with_name("ramdisk.img.backup")
+    if not backup_path.exists():
+        _log("[cyan]Creating original ramdisk backup (ramdisk.img.backup)...[/cyan]")
+        shutil.copyfile(ramdisk_path, backup_path)
+
+    work_dir = tools_dir / "magiskboot" / "_patch_work"
+    if work_dir.exists():
+        shutil.rmtree(work_dir, ignore_errors=True)
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # 1. Extract Magisk x86_64 binaries & assets
+        with zipfile.ZipFile(magisk_zip) as z:
+            (work_dir / "magiskinit").write_bytes(z.read("lib/x86_64/libmagiskinit.so"))
+            (work_dir / "magisk").write_bytes(z.read("lib/x86_64/libmagisk.so"))
+            (work_dir / "init-ld").write_bytes(z.read("lib/x86_64/libinit-ld.so"))
+            (work_dir / "magiskboot").write_bytes(z.read("lib/x86_64/libmagiskboot.so"))
+            (work_dir / "magiskpolicy").write_bytes(z.read("lib/x86_64/libmagiskpolicy.so"))
+            (work_dir / "busybox").write_bytes(z.read("lib/x86_64/libbusybox.so"))
+            (work_dir / "util_functions.sh").write_bytes(z.read("assets/util_functions.sh"))
+            (work_dir / "boot_patch.sh").write_bytes(z.read("assets/boot_patch.sh"))
+
+        # 2. Compress binaries to .xz
+        for b in ["magisk", "init-ld", "magiskboot", "magiskpolicy", "busybox", "magiskinit"]:
+            subprocess.run([str(mb), "compress=xz", b, f"{b}.xz"], cwd=str(work_dir), check=True, creationflags=CREATE_NO_WINDOW)
+
+        # 3. Build preconfigured magisk.db (granting root to Apps and ADB shell UID 2000)
+        import sqlite3
+        db_path = work_dir / "magisk.db"
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        c.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value INT)")
+        c.execute("CREATE TABLE strings (key TEXT PRIMARY KEY, value TEXT)")
+        c.execute("CREATE TABLE policies (uid INT PRIMARY KEY, policy INT, until INT, logging INT, notification INT)")
+        c.execute("CREATE TABLE denylist (package_name TEXT, process TEXT, PRIMARY KEY(package_name, process))")
+        c.execute("INSERT INTO settings (key, value) VALUES ('root_access', 3)")
+        c.execute("INSERT INTO settings (key, value) VALUES ('su_request_timeout', 15)")
+        c.execute("INSERT INTO settings (key, value) VALUES ('su_auto_response', 1)")
+        c.execute("INSERT INTO policies (uid, policy, until, logging, notification) VALUES (2000, 2, 0, 1, 0)")
+        c.execute("INSERT INTO policies (uid, policy, until, logging, notification) VALUES (0, 2, 0, 1, 0)")
+        conn.commit()
+        conn.close()
+
+        # 4. Create anvill_init.sh to populate /data/adb/magisk environment on boot
+        init_sh = (
+            "#!/system/bin/sh\n"
+            "mkdir -p /data/adb/magisk\n"
+            "chmod 755 /data/adb\n"
+            "chmod 755 /data/adb/magisk\n"
+            "for b in magisk magiskinit magiskboot magiskpolicy busybox util_functions.sh boot_patch.sh; do\n"
+            "    if [ -f /debug_ramdisk/$b ]; then\n"
+            "        cp -af /debug_ramdisk/$b /data/adb/magisk/$b\n"
+            "    fi\n"
+            "done\n"
+            "chmod -R 755 /data/adb/magisk\n"
+            "chown -R 0:0 /data/adb/magisk\n"
+            "if [ ! -f /data/adb/magisk.db ] && [ -f /debug_ramdisk/magisk.db ]; then\n"
+            "    cp -af /debug_ramdisk/magisk.db /data/adb/magisk.db\n"
+            "fi\n"
+            "chmod 600 /data/adb/magisk.db\n"
+            "chown 0:0 /data/adb/magisk.db\n"
+            "/debug_ramdisk/magisk --sqlite \"INSERT OR REPLACE INTO settings (key, value) VALUES ('root_access', 3); INSERT OR REPLACE INTO policies (uid, policy, until, logging, notification) VALUES (2000, 2, 0, 1, 0);\"\n"
+        )
+        (work_dir / "anvill_init.sh").write_text(init_sh, newline="\n")
+
+        # 5. Write config and anvill.rc
+        config_content = "KEEPVERITY=true\nKEEPFORCEENCRYPT=true\nRECOVERYMODE=false\nVENDORBOOT=false\nPREINITDEVICE=metadata\n"
+        (work_dir / "config").write_text(config_content)
+
+        rc_content = (
+            "# Anvill Root & PATH Injection\n"
+            "on init\n"
+            "    export PATH /debug_ramdisk:/product/bin:/apex/com.android.runtime/bin:/apex/com.android.art/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin\n"
+            "\n"
+            "on post-fs-data\n"
+            "    start anvill_init\n"
+            "\n"
+            "on property:sys.boot_completed=1\n"
+            "    start anvill_init\n"
+            "\n"
+            "service anvill_init /system/bin/sh /debug_ramdisk/anvill_init.sh\n"
+            "    user root\n"
+            "    group root\n"
+            "    seclabel u:r:magisk:s0\n"
+            "    oneshot\n"
+        )
+        (work_dir / "anvill.rc").write_text(rc_content, newline="\n")
+
+        # 6. Decompress stock ramdisk
+        shutil.copyfile(backup_path, work_dir / "ramdisk.img")
+        subprocess.run([str(mb), "decompress", "ramdisk.img", "ramdisk.cpio"], cwd=str(work_dir), check=True, creationflags=CREATE_NO_WINDOW)
+        shutil.copyfile(work_dir / "ramdisk.cpio", work_dir / "ramdisk.cpio.orig")
+
+        # 7. CPIO patch
+        env_patch = dict(os.environ)
+        env_patch["KEEPVERITY"] = "true"
+        env_patch["KEEPFORCEENCRYPT"] = "true"
+
+        cpio_cmds = [
+            str(mb), "cpio", "ramdisk.cpio",
+            "add 0750 init magiskinit",
+            "mkdir 0750 overlay.d",
+            "mkdir 0750 overlay.d/sbin",
+            "add 0644 overlay.d/sbin/magisk.xz magisk.xz",
+            "add 0644 overlay.d/sbin/init-ld.xz init-ld.xz",
+            "add 0644 overlay.d/sbin/magiskboot.xz magiskboot.xz",
+            "add 0644 overlay.d/sbin/magiskpolicy.xz magiskpolicy.xz",
+            "add 0644 overlay.d/sbin/busybox.xz busybox.xz",
+            "add 0644 overlay.d/sbin/magiskinit.xz magiskinit.xz",
+            "add 0750 overlay.d/sbin/anvill_init.sh anvill_init.sh",
+            "add 0644 overlay.d/sbin/magisk.db magisk.db",
+            "add 0644 overlay.d/sbin/util_functions.sh util_functions.sh",
+            "add 0644 overlay.d/sbin/boot_patch.sh boot_patch.sh",
+            "add 0750 overlay.d/anvill.rc anvill.rc",
+            "patch",
+            "backup ramdisk.cpio.orig",
+            "mkdir 000 .backup",
+            "add 000 .backup/.magisk config",
+        ]
+        res_patch = subprocess.run(cpio_cmds, cwd=str(work_dir), env=env_patch, capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+        if res_patch.returncode != 0:
+            _log(f"[bold red]CPIO patching failed:[/bold red] {res_patch.stderr}")
+            return False
+
+        # 6. Compress to final ramdisk.img
+        patched_out = work_dir / "ramdisk_patched.img"
+        subprocess.run([str(mb), "compress=lz4_legacy", "ramdisk.cpio", str(patched_out.name)], cwd=str(work_dir), check=True, creationflags=CREATE_NO_WINDOW)
+
+        # 7. Deploy to system image & AVD initrd
+        shutil.copyfile(patched_out, ramdisk_path)
+        avd_initrd = avd_root / f"{avd_name}.avd" / "initrd"
+        if avd_initrd.parent.exists():
+            shutil.copyfile(patched_out, avd_initrd)
+
+        _log("[bold green]Magisk 31.1 successfully patched into ramdisk![/bold green]")
+        return True
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
 def ensure_rootavd_tool(target_dir: Path = ROOTAVD_DIR) -> bool:
     """Ensures rootAVD repository is cloned and ready in tools/rootAVD."""
     if (target_dir / "rootAVD.sh").exists() and (target_dir / "Magisk.zip").exists():
@@ -200,6 +356,8 @@ def root_avd(
 
             emu_cmd = [
                 str(emu_bin),
+                "-port",
+                "5554",
                 "-avd",
                 avd_name,
                 "-gpu",
@@ -221,36 +379,23 @@ def root_avd(
 
         # 1. Patch Magisk into ramdisk
         if not (debloat_only or spoof_only):
-            _log("[cyan]Injecting Magisk into ramdisk via rootAVD...[/cyan]")
-            script_name = "rootAVD.bat" if platform.system() == "Windows" else "rootAVD.sh"
-            cmd = [str(tools_dir / script_name), str(ramdisk_rel)]
+            _log("[cyan]Patching ramdisk with Magisk 31.1...[/cyan]")
+            ok = patch_ramdisk_with_magisk_offline(ramdisk_path, tools_dir=tools_dir.parent, avd_root=avd_root, avd_name=avd_name)
+            if not ok:
+                _log("[bold red]Failed to patch ramdisk with Magisk.[/bold red]")
+                return 1
 
-            res = subprocess.run(
-                cmd,
-                input="\n\n",
-                cwd=str(tools_dir),
-                env=env,
+        # 1.5. Ensure Magisk Manager APK is installed
+        magisk_apk = tools_dir / "Apps" / "Magisk.apk"
+        if magisk_apk.exists():
+            _log("[cyan]Installing Magisk Manager APK...[/cyan]")
+            subprocess.run(
+                [str(adb_bin), "-e", "install", "-r", "-d", str(magisk_apk)],
                 capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                env=env,
                 check=False,
                 creationflags=CREATE_NO_WINDOW,
             )
-
-            if res.returncode != 0:
-                _log(f"[bold red]rootAVD execution failed with code {res.returncode}:[/bold red]")
-                print(res.stdout)
-                print(res.stderr)
-                return res.returncode
-
-            # Copy patched ramdisk to AVD initrd cache as well
-            avd_initrd = avd_root / f"{avd_name}.avd" / "initrd"
-            if avd_initrd.exists() and ramdisk_path.exists():
-                shutil.copyfile(ramdisk_path, avd_initrd)
-
-            _log(f"[bold green]Magisk successfully patched into {tinfo['api']} ramdisk![/bold green]")
-            _log("[cyan]Original ramdisk backed up to ramdisk.img.backup[/cyan]")
 
         # 2. Debloat Android (keep only Play Store & essential OS services)
         if debloat or debloat_only:

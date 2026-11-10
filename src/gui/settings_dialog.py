@@ -35,7 +35,7 @@ class SettingsDialog(QDialog):
         self.palette = palette
         self.setWindowTitle("Anvill Settings")
         self.setWindowIcon(get_svg_icon("anvill-logo.svg", palette.accent, palette.accent, 24))
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.setFixedSize(480, 520)
         self.setModal(True)
 

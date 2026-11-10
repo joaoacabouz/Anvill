@@ -6,7 +6,9 @@ import ctypes
 from ctypes import wintypes
 import os
 import platform
+import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -31,7 +33,10 @@ from PySide6.QtWidgets import (
 from adb import AdbManager
 from config import load_config
 from configurator import AvdConfigurator
-from constants import AVD_ROOT, DEFAULT_AVD_NAME, REPO_ROOT, SDK_ROOT
+from constants import AVD_ROOT, DEFAULT_AVD_NAME, REPO_ROOT, SDK_ROOT, TOOLS_ROOT
+from debloat import debloat_android
+from hardening import apply_real_device_hardening
+from provisioner import get_portable_env
 from gui.icons import get_svg_icon, get_svg_pixmap
 from gui.theme import ThemePalette
 from inspector import HostInspector
@@ -231,8 +236,56 @@ class ViewportContainer(QWidget):
 
 
 # ---------------------------------------------------------------------------
-# Background Boot Worker
+# Background Boot Worker & Process Hygiene
 # ---------------------------------------------------------------------------
+
+def kill_zombie_emulators(avd_name: str = "") -> None:
+    """Terminates orphaned background QEMU/emulator instances, restarts ADB daemon, and cleans stale lock files."""
+    if platform.system() == "Windows":
+        try:
+            CREATE_NO_WINDOW = 0x08000000
+            subprocess.run(["taskkill", "/F", "/IM", "qemu-system-x86_64.exe"], capture_output=True, check=False, creationflags=CREATE_NO_WINDOW)
+            subprocess.run(["taskkill", "/F", "/IM", "emulator.exe"], capture_output=True, check=False, creationflags=CREATE_NO_WINDOW)
+            adb_bin = SDK_ROOT / "platform-tools" / "adb.exe"
+            if adb_bin.exists():
+                subprocess.run([str(adb_bin), "kill-server"], capture_output=True, check=False, creationflags=CREATE_NO_WINDOW)
+                time.sleep(0.3)
+                env = get_portable_env(SDK_ROOT)
+                subprocess.run([str(adb_bin), "start-server"], capture_output=True, check=False, env=env, creationflags=CREATE_NO_WINDOW)
+            time.sleep(0.3)
+        except Exception:
+            pass
+
+    # Clean stale lock files and corrupted snapshots in AVD directory
+    if avd_name:
+        avd_dir = AVD_ROOT / f"{avd_name}.avd"
+        if avd_dir.exists():
+            for lock_pattern in ["*.lock", "*.lock.lock"]:
+                for lock_file in avd_dir.glob(lock_pattern):
+                    try:
+                        if lock_file.is_file():
+                            lock_file.unlink(missing_ok=True)
+                        elif lock_file.is_dir():
+                            shutil.rmtree(lock_file, ignore_errors=True)
+                    except Exception:
+                        pass
+            snap_dir = avd_dir / "snapshots"
+            if snap_dir.exists():
+                shutil.rmtree(snap_dir, ignore_errors=True)
+            qb = avd_dir / "quickbootChoice.ini"
+            if qb.exists():
+                try:
+                    qb.write_text("saveOnExit = false\n", encoding="utf-8")
+                except Exception:
+                    pass
+            tmp_adb = avd_dir / "tmpAdbCmds"
+            if tmp_adb.exists():
+                for cmd_file in tmp_adb.glob("adbcommand*"):
+                    try:
+                        cmd_file.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
 
 class EmulatorBootWorker(QThread):
     """Starts the emulator process, enforces tablet resolution and awaits boot completion in background."""
@@ -267,6 +320,9 @@ class EmulatorBootWorker(QThread):
             gpu_mode = pick_gpu_mode(inspector, safe_gpu=self.safe_gpu)
             spoof = get_spoof_profile(profiles_data, self.spoof_profile)
 
+            # Ensure any previous zombie emulator process or stale lock is cleared
+            kill_zombie_emulators(self.avd_name)
+
             # Pre-apply tablet landscape settings to AVD config.ini before booting
             self.status_signal.emit("Configuring AVD tablet landscape profile...")
             configurator = AvdConfigurator(self.avd_name)
@@ -275,12 +331,12 @@ class EmulatorBootWorker(QThread):
             # Clear legacy phone snapshot if it exists so AVD boots cleanly in tablet mode
             snap_dir = configurator.avd_dir / "snapshots"
             if snap_dir.exists():
-                import shutil
                 shutil.rmtree(snap_dir, ignore_errors=True)
 
             flags = LaunchFlags(
                 profile=profile,
                 gpu_mode=gpu_mode,
+                gpu_vendor=inspector.gpu.vendor,
                 avd_name=self.avd_name,
                 scrcpy=False,
                 safe_gpu=self.safe_gpu,
@@ -288,21 +344,32 @@ class EmulatorBootWorker(QThread):
             )
 
             emu_bin = SDK_ROOT / "emulator" / ("emulator.exe" if platform.system() == "Windows" else "emulator")
-            from provisioner import get_portable_env
             env = get_portable_env(SDK_ROOT)
+            self.adb.env = env
+            self.adb.serial = "emulator-5554"
 
             self.launcher = EmulatorLauncher(emu_bin, flags, self.adb, env)
             self.status_signal.emit("Launching QEMU Emulator Engine...")
-            self.proc = self.launcher.launch()
+            self.proc = self.launcher.start_process()
 
             self.status_signal.emit("Waiting for device connection (ADB)...")
-            if not self.adb.wait_for_device(timeout=90):
-                self.booted_signal.emit(False, "Device connection timed out.")
+            if not self.adb.wait_for_device(timeout=150, proc=self.proc, status_callback=self.status_signal.emit):
+                if self.proc and self.proc.poll() is not None:
+                    self.booted_signal.emit(False, f"Emulator engine terminated prematurely (exit code {self.proc.returncode}). Please check logs/anvill.log.")
+                else:
+                    self.booted_signal.emit(False, "Device connection timed out.")
                 return
 
+            # Keep ADB alive & active inside Android guest
+            self.adb.run("shell", "settings", "put", "global", "adb_enabled", "1", timeout=5)
+            self.adb.run("shell", "rm", "-f", "/data/adb/service.d/99-anvill-realdevice.sh", "/data/adb/post-fs-data.d/99-anvill-realdevice.sh", timeout=5)
+
             self.status_signal.emit("Waiting for Android to complete boot...")
-            if not self.adb.wait_for_boot_completed(timeout=120):
-                self.booted_signal.emit(False, "Android boot timed out.")
+            if not self.adb.wait_for_boot_completed(timeout=300, proc=self.proc, status_callback=self.status_signal.emit):
+                if self.proc and self.proc.poll() is not None:
+                    self.booted_signal.emit(False, f"Emulator terminated during boot (exit code {self.proc.returncode}).")
+                else:
+                    self.booted_signal.emit(False, "Android boot timed out.")
                 return
 
             # Enforce 16:9 Tablet Landscape resolution in Android OS
@@ -312,8 +379,49 @@ class EmulatorBootWorker(QThread):
             self.adb.run("shell", "settings", "put", "system", "accelerometer_rotation", "0")
             self.adb.run("shell", "settings", "put", "system", "user_rotation", "0")
 
+            # Ensure Magisk Root Manager APK is installed & finalized
+            magisk_apk = TOOLS_ROOT / "rootAVD" / "Apps" / "Magisk.apk"
+            if magisk_apk.exists():
+                self.status_signal.emit("Verifying Magisk Root & Manager...")
+                try:
+                    pkgs = self.adb.run("shell", "pm", "list", "packages", "com.topjohnwu.magisk").stdout
+                    if "com.topjohnwu.magisk" not in pkgs:
+                        self.status_signal.emit("Installing Magisk Root Manager...")
+                        self.adb.run("install", "-r", "-d", str(magisk_apk), timeout=60)
+
+                    self.adb.run("shell", "pm", "grant", "com.topjohnwu.magisk", "android.permission.POST_NOTIFICATIONS")
+                    self.adb.run("shell", "monkey", "-p", "com.topjohnwu.magisk", "-c", "android.intent.category.LAUNCHER", "1")
+                    time.sleep(3)
+
+                    dump = self.adb.run("shell", "uiautomator dump /data/local/tmp/magisk_check.xml && cat /data/local/tmp/magisk_check.xml").stdout
+                    if "additional setup" in dump.lower():
+                        self.status_signal.emit("Finalizing Magisk root environment...")
+                        self.adb.run("shell", "input", "keyevent", "22")
+                        time.sleep(1)
+                        self.adb.run("shell", "input", "keyevent", "66")
+                        time.sleep(3)
+
+                    self.adb.run("shell", "input", "keyevent", "3")
+                except Exception as m_exc:
+                    print(f"[Anvill] Magisk manager warning: {m_exc}")
+
+            # Debloat Android non-essential packages (keeping Google Play Store & GMS safe)
+            cfg = load_config()
+            if cfg.get("debloat", {}).get("enabled_by_default", True):
+                self.status_signal.emit("Debloating Android (stripping bloatware)...")
+                try:
+                    debloat_android(self.adb.adb_path, env, config=cfg)
+                except Exception as d_exc:
+                    print(f"[Anvill] Debloat warning: {d_exc}")
+
             self.status_signal.emit("Injecting device spoofing & anti-detection...")
             self.adb.apply_spoof(spoof)
+
+            if cfg.get("hardening", {}).get("enabled_by_default", True):
+                try:
+                    apply_real_device_hardening(self.adb.adb_path, env, AVD_ROOT, self.avd_name, props=spoof.props, config=cfg)
+                except Exception as h_exc:
+                    print(f"[Anvill] Hardening warning: {h_exc}")
 
             self.status_signal.emit("✓ Android Tablet ready and running!")
             self.booted_signal.emit(True, "")
@@ -339,7 +447,8 @@ class PlayerView(QWidget):
         super().__init__(parent)
         self.palette = palette
         self.avd_name = avd_name
-        self.adb = AdbManager()
+        env = get_portable_env(SDK_ROOT)
+        self.adb = AdbManager(env=env, serial="emulator-5554")
         self.boot_worker: Optional[EmulatorBootWorker] = None
         self.embedded_hwnd: Optional[int] = None
         self._toolbars: List[int] = []
@@ -521,7 +630,10 @@ class PlayerView(QWidget):
         self.boot_progress.setFixedHeight(6)
         self.boot_progress.setFixedWidth(280)
 
-        bo_layout.addWidget(self.boot_spinner_lbl, alignment=Qt.AlignCenter)
+        sp_box = QHBoxLayout()
+        sp_box.setAlignment(Qt.AlignCenter)
+        sp_box.addWidget(self.boot_spinner_lbl)
+        bo_layout.addLayout(sp_box)
         bo_layout.addWidget(self.boot_title_lbl)
         bo_layout.addWidget(self.boot_status_lbl)
         bo_layout.addWidget(self.boot_progress, alignment=Qt.AlignCenter)
@@ -727,11 +839,13 @@ class PlayerView(QWidget):
         self.boot_status_lbl.setText("Initializing QEMU engine in 16:9 widescreen...")
         self.status_changed.emit("booting")
 
+        cfg = load_config()
         self.boot_worker = EmulatorBootWorker(
             avd_name=self.avd_name,
             hw_profile=hw_profile,
             spoof_profile=spoof_profile,
-            cold_boot=False,
+            cold_boot=cfg.get("vm", {}).get("cold_boot", True),
+            safe_gpu=cfg.get("vm", {}).get("safe_gpu", False),
         )
 
         if status_callback:
@@ -932,6 +1046,22 @@ class PlayerView(QWidget):
         if hasattr(self, "boot_progress"):
             self.boot_progress.setValue(0)
 
+    def shutdown_emulator(self) -> None:
+        """Programmatically shuts down the running emulator without prompting confirmation."""
+        try:
+            self.adb.run("emu", "kill", timeout=5)
+        except Exception:
+            pass
+        if self.boot_worker and self.boot_worker.proc:
+            try:
+                self.boot_worker.proc.terminate()
+            except Exception:
+                pass
+        self._cleanup_session()
+        self.stack.setCurrentIndex(0)
+        self.status_changed.emit("offline")
+        kill_zombie_emulators(self.avd_name)
+
     def _stop_emulator(self) -> None:
         reply = QMessageBox.question(
             self,
@@ -940,15 +1070,7 @@ class PlayerView(QWidget):
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
-            self.adb.run("emu", "kill")
-            if self.boot_worker and self.boot_worker.proc:
-                try:
-                    self.boot_worker.proc.terminate()
-                except Exception:
-                    pass
-            self._cleanup_session()
-            self.stack.setCurrentIndex(0)
-            self.status_changed.emit("offline")
+            self.shutdown_emulator()
 
     # -----------------------------------------------------------------------
     # Android Key Controls
@@ -961,31 +1083,55 @@ class PlayerView(QWidget):
         else:
             win.showFullScreen()
 
+    def _send_key(self, keycode: int | str) -> None:
+        """Dispatches an Android keyevent asynchronously via portable ADB without freezing the GUI."""
+        def _target():
+            for attempt in range(2):
+                try:
+                    res = self.adb.run("shell", "input", "keyevent", str(keycode), timeout=5)
+                    if res.returncode == 0:
+                        return
+                    err = (res.stderr or "").lower()
+                    if "offline" in err or "not found" in err:
+                        time.sleep(0.8)
+                        continue
+                    print(f"[Anvill] keyevent {keycode} warning: {res.stderr.strip() or res.stdout.strip()}")
+                    break
+                except Exception as e:
+                    print(f"[Anvill] keyevent exception: {e}")
+                    time.sleep(0.5)
+        threading.Thread(target=_target, daemon=True).start()
+
     def _on_power(self) -> None:
-        self.adb.run("shell", "input", "keyevent", "26")
+        self._send_key(26)
 
     def _on_vol_up(self) -> None:
-        self.adb.run("shell", "input", "keyevent", "24")
+        self._send_key(24)
 
     def _on_vol_down(self) -> None:
-        self.adb.run("shell", "input", "keyevent", "25")
+        self._send_key(25)
 
     def _on_rotate(self) -> None:
         self.is_landscape = not self.is_landscape
         # For tablet landscape (1920x1080), 0 is landscape horizontal and 1 is portrait vertical
         val = 0 if self.is_landscape else 1
-        self.adb.run("shell", "settings", "put", "system", "accelerometer_rotation", "0")
-        self.adb.run("shell", "settings", "put", "system", "user_rotation", str(val))
+        def _rot():
+            try:
+                self.adb.run("shell", "settings", "put", "system", "accelerometer_rotation", "0", timeout=5)
+                self.adb.run("shell", "settings", "put", "system", "user_rotation", str(val), timeout=5)
+            except Exception as e:
+                print(f"[Anvill] rotate exception: {e}")
+        threading.Thread(target=_rot, daemon=True).start()
         self._sync_geometry()
 
     def _on_back(self) -> None:
-        self.adb.run("shell", "input", "keyevent", "4")
+        self._send_key(4)
 
     def _on_home(self) -> None:
-        self.adb.run("shell", "input", "keyevent", "3")
+        self._send_key(3)
 
     def _on_recents(self) -> None:
-        self.adb.run("shell", "input", "keyevent", "187")
+        self._send_key(187)
 
     def _on_screenshot(self) -> None:
         out_dir = REPO_ROOT / "screenshots"
@@ -993,17 +1139,41 @@ class PlayerView(QWidget):
         filename = f"screenshot_{int(time.time())}.png"
         filepath = out_dir / filename
 
+        success = False
+        # Method 1: ADB screencap & pull (pure guest OS framebuffer)
         try:
-            with open(filepath, "wb") as f:
-                subprocess.run(
-                    [str(self.adb.adb_path), "-e", "exec-out", "screencap", "-p"],
-                    stdout=f,
-                    timeout=15,
-                    check=True,
-                )
-            QMessageBox.information(self, "Screenshot Saved", f"Screenshot saved to:\n{filepath}")
-        except Exception as exc:
-            QMessageBox.warning(self, "Screenshot Error", f"Failed to capture screenshot:\n{exc}")
+            tmp_remote = "/data/local/tmp/anvill_screenshot.png"
+            cap_res = self.adb.run("shell", "screencap", "-p", tmp_remote, timeout=8)
+            if cap_res.returncode == 0:
+                pull_res = self.adb.run("pull", tmp_remote, str(filepath), timeout=10)
+                self.adb.run("shell", "rm", "-f", tmp_remote, timeout=3)
+                if pull_res.returncode == 0 and filepath.exists() and filepath.stat().st_size > 0:
+                    success = True
+        except Exception as adb_err:
+            print(f"[Anvill] ADB screenshot attempt note: {adb_err}")
+
+        # Method 2: Direct Win32 Viewport Grab Fallback
+        if not success:
+            try:
+                from PySide6.QtGui import QGuiApplication
+                screen = QGuiApplication.primaryScreen()
+                if self.embedded_hwnd and screen:
+                    pix = screen.grabWindow(self.embedded_hwnd)
+                    if not pix.isNull() and pix.width() > 10 and pix.height() > 10:
+                        pix.save(str(filepath), "PNG")
+                        success = True
+                elif hasattr(self, "viewport_frame") and self.viewport_frame:
+                    pix = self.viewport_frame.grab()
+                    if not pix.isNull() and pix.width() > 10 and pix.height() > 10:
+                        pix.save(str(filepath), "PNG")
+                        success = True
+            except Exception as grab_err:
+                print(f"[Anvill] Viewport grab fallback error: {grab_err}")
+
+        if success:
+            QMessageBox.information(self, "Screenshot Saved", f"Screenshot saved successfully to:\n{filepath}")
+        else:
+            QMessageBox.warning(self, "Screenshot Error", "Could not capture screenshot from device or viewport.")
 
     def _on_install_apk(self) -> None:
         apk_path, _ = QFileDialog.getOpenFileName(
@@ -1018,7 +1188,25 @@ class PlayerView(QWidget):
     def _install_apk(self, apk: Path) -> None:
         if not apk.exists():
             return
-        res = self.adb.run("install", "-r", str(apk), timeout=120)
+
+        # Ensure Android device is fully online and responsive before issuing install command
+        st = self.adb.run("get-state", timeout=3).stdout.strip()
+        if st != "device":
+            # If booting or briefly offline during Zygote restart, wait for device
+            if not self.adb.wait_for_device(timeout=15):
+                QMessageBox.warning(
+                    self,
+                    "Android Still Starting",
+                    "The Android VM is still finishing its boot sequence.\nPlease wait a moment for the system to complete boot and try again.",
+                )
+                return
+
+        res = self.adb.run("install", "-r", "-t", "-d", str(apk), timeout=180)
+        # If transient offline state during adbd restart, retry once automatically
+        if res.returncode != 0 and ("offline" in (res.stderr or "").lower() or "not found" in (res.stderr or "").lower()):
+            time.sleep(2.0)
+            res = self.adb.run("install", "-r", "-t", "-d", str(apk), timeout=180)
+
         if res.returncode == 0:
             QMessageBox.information(self, "APK Installed", f"Successfully installed:\n{apk.name}")
         else:

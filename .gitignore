@@ -44,7 +44,8 @@ android-sdk/
 avds/
 .android/
 jdk/
-tools/rootAVD/
+tools/
+screenshots/
 
 # Temporary files & Lock files
 *.tmp

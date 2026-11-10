@@ -128,6 +128,8 @@ class MainWindow(QMainWindow):
         try:
             dlg = SettingsDialog(self, self.current_palette)
             dlg.theme_selected.connect(self._on_theme_changed)
+            dlg.raise_()
+            dlg.activateWindow()
             if dlg.exec():
                 # Refresh AVD name if changed
                 self.cfg = load_config()
@@ -144,10 +146,15 @@ class MainWindow(QMainWindow):
 
     def _on_splash_finished(self, setup_ready: bool) -> None:
         if setup_ready:
-            # Setup complete -> transition to Player Dashboard with profile selection
+            # Setup complete -> transition to Player with running emulator already embedded
             self.stack.setCurrentIndex(2)
-            self.player_view.stack.setCurrentIndex(0)
-            self.title_bar.set_status("offline")
+            if hasattr(self, "player_view"):
+                if self.player_view.embedded_hwnd:
+                    self.player_view.show_running_player()
+                    self.title_bar.set_status("running")
+                else:
+                    self.player_view.stack.setCurrentIndex(0)
+                    self.title_bar.set_status("offline")
         else:
             # First run -> go to Setup Wizard
             self.stack.setCurrentIndex(1)
@@ -254,3 +261,12 @@ class MainWindow(QMainWindow):
             self.setCursor(Qt.SizeHorCursor)
         else:
             self.setCursor(Qt.ArrowCursor)
+
+    def closeEvent(self, event) -> None:
+        """Ensures running emulator VM and background helpers are cleanly shut down on app exit."""
+        if hasattr(self, "player_view"):
+            try:
+                self.player_view.shutdown_emulator()
+            except Exception:
+                pass
+        super().closeEvent(event)

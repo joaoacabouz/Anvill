@@ -67,7 +67,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         ],
         "settings_overrides": {
             "global": {
-                "adb_enabled": "0",
+                "adb_enabled": "1",
                 "development_settings_enabled": "0",
                 "package_verifier_user_consent": "1",
                 "install_non_market_apps": "1",

@@ -82,6 +82,15 @@ def debloat_android(adb_bin: Path, env: dict[str, str], config: dict | None = No
                 removed += 1
                 _log(f"  [dim]- Removed bloatware:[/dim] [yellow]{pkg}[/yellow]")
 
+    # Restart launchers to flush cached icons from the home screen and dock
+    subprocess.run(
+        [str(adb_bin), "-e", "shell", "am force-stop com.google.android.apps.nexuslauncher 2>/dev/null; am force-stop com.android.launcher3 2>/dev/null"],
+        capture_output=True,
+        env=env,
+        check=False,
+        creationflags=CREATE_NO_WINDOW,
+    )
+
     # Deploy persistent boot service script to keep bloatware disabled across reboots
     debloat_sh = [
         "#!/system/bin/sh",

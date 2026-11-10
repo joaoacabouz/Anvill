@@ -69,6 +69,7 @@ class LaunchFlags:
             args += ["-gpu", "host", "-feature", "Vulkan", "-feature", "GLDirectMem"]
 
         # Base flags
+        args += ["-port", "5554"]
         args += ["-avd", self.avd_name]
         args += ["-accel", "on" if self.use_accel else "off"]
         if self.writable_system:
@@ -76,7 +77,7 @@ class LaunchFlags:
         if self.no_boot_anim:
             args.append("-no-boot-anim")
         if self.cold_boot:
-            args.append("-no-snapshot")
+            args.extend(["-no-snapshot", "-no-snapshot-load", "-no-snapshot-save"])
         if self.wipe_data:
             args.append("-wipe-data")
         # Enforce exact resolution skin (e.g. 1920x1080) for horizontal tablet display

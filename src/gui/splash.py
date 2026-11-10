@@ -72,11 +72,15 @@ class SplashScreen(QWidget):
         card_layout.setContentsMargins(30, 30, 30, 30)
         card_layout.setSpacing(16)
 
-        # Glowing Icon (High-resolution Anvill Logo)
+        # Glowing Icon (High-resolution Anvill Logo) perfectly centered
+        icon_box = QHBoxLayout()
+        icon_box.setAlignment(Qt.AlignCenter)
         self.icon_lbl = QLabel()
         self.icon_lbl.setFixedSize(68, 68)
         self.icon_lbl.setAlignment(Qt.AlignCenter)
         self.icon_lbl.setPixmap(get_svg_pixmap("anvill-logo.svg", self.palette.accent, 68))
+        icon_box.addWidget(self.icon_lbl)
+        card_layout.addLayout(icon_box)
 
         # Title
         self.title_lbl = QLabel("ANVILL")
@@ -107,7 +111,6 @@ class SplashScreen(QWidget):
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setFixedHeight(8)
 
-        card_layout.addWidget(self.icon_lbl)
         card_layout.addWidget(self.title_lbl)
         card_layout.addWidget(self.sub_lbl)
         card_layout.addSpacing(10)
