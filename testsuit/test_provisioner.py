@@ -96,7 +96,9 @@ class TestProvisioner(unittest.TestCase):
             user_home = root / ".android"
 
             # Create mock system image folder so check passes
-            sysdir = sdk_root / "system-images" / "android-36" / "google_apis" / "x86_64"
+            from config import get_target_image_info
+            tinfo = get_target_image_info()
+            sysdir = sdk_root / Path(tinfo["rel_sysdir"])
             sysdir.mkdir(parents=True)
 
             avd_name = "DynamicTargetAVD"
@@ -107,7 +109,7 @@ class TestProvisioner(unittest.TestCase):
             self.assertTrue(ini_file.exists())
             ini_content = ini_file.read_text(encoding="utf-8")
             self.assertIn(f"path={avd_root / f'{avd_name}.avd'}", ini_content)
-            self.assertIn("target=android-36", ini_content)
+            self.assertIn(f"target={tinfo['api']}", ini_content)
 
 
 if __name__ == "__main__":

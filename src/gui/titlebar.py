@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from constants import DEFAULT_AVD_NAME
 from gui.icons import get_svg_icon, get_svg_pixmap
 from gui.theme import ThemePalette, list_themes
 
@@ -28,7 +29,7 @@ class FramelessTitleBar(QWidget):
         self,
         parent: QWidget,
         palette: ThemePalette,
-        avd_name: str = "Android16_Pro",
+        avd_name: str = DEFAULT_AVD_NAME,
     ):
         super().__init__(parent)
         self.parent_window = parent

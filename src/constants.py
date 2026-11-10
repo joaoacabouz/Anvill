@@ -20,8 +20,8 @@ ROOTAVD_DIR: Path = TOOLS_ROOT / "rootAVD"
 CONFIG_PATH: Path = REPO_ROOT / "config.json"
 PROFILES_PATH: Path = REPO_ROOT / "profiles.json"
 
-DEFAULT_AVD_NAME: str = "Android16_Pro"
-DEFAULT_RAMDISK_REL: Path = Path("system-images") / "android-36" / "google_apis" / "x86_64" / "ramdisk.img"
+DEFAULT_AVD_NAME: str = "Android14_PlayStore"
+DEFAULT_RAMDISK_REL: Path = Path("system-images") / "android-34" / "google_apis_playstore" / "x86_64" / "ramdisk.img"
 
 # Backward compatibility aliases
 DEFAULT_SDK_ROOT: Path = SDK_ROOT

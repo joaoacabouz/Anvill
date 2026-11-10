@@ -620,7 +620,7 @@ def bootstrap(
     required_pkgs = cfg.get("sdk", {}).get("required_packages", [
         "emulator",
         "platform-tools",
-        "system-images/android-36/google_apis/x86_64",
+        "system-images/android-34/google_apis_playstore/x86_64",
         "extras/google/usb_driver",
         "extras/google/Android_Emulator_Hypervisor_Driver",
     ])

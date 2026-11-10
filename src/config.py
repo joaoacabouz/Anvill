@@ -24,7 +24,7 @@ except ImportError:
 # In-memory default configuration fallback
 DEFAULT_CONFIG: Dict[str, Any] = {
     "vm": {
-        "avd_name": "Android16_Pro",
+        "avd_name": "Android14_PlayStore",
         "auto_root_on_setup": True,
         "default_hardware_profile": "auto",
         "default_spoof_profile": "s23_ultra",
@@ -99,13 +99,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         },
     },
     "sdk": {
-        "target_image": "system-images/android-36/google_apis/x86_64",
+        "target_image": "system-images/android-34/google_apis_playstore/x86_64",
         "command_line_tools_url": "https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip",
         "openjdk_17_url": "https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse",
         "required_packages": [
             "emulator",
             "platform-tools",
-            "system-images/android-36/google_apis/x86_64",
+            "system-images/android-34/google_apis_playstore/x86_64",
             "extras/google/usb_driver",
             "extras/google/Android_Emulator_Hypervisor_Driver",
         ],
@@ -152,7 +152,7 @@ def get_target_image_info(config: Dict[str, Any] | None = None) -> Dict[str, str
     Returns breakdown with api level, tag, abi, relative sysdir and ramdisk paths.
     """
     cfg = config or load_config()
-    target = cfg.get("sdk", {}).get("target_image", "system-images/android-36/google_apis/x86_64")
+    target = cfg.get("sdk", {}).get("target_image", "system-images/android-34/google_apis_playstore/x86_64")
     norm = target.replace(";", "/").strip("/")
     parts = [p for p in norm.split("/") if p]
     if len(parts) >= 4 and parts[0] == "system-images":
@@ -160,14 +160,14 @@ def get_target_image_info(config: Dict[str, Any] | None = None) -> Dict[str, str
     elif len(parts) >= 3:
         api, tag, abi = parts[0], parts[1], parts[2]
     else:
-        api, tag, abi = "android-36", "google_apis", "x86_64"
+        api, tag, abi = "android-34", "google_apis_playstore", "x86_64"
 
     return {
         "raw": target,
         "slash": f"system-images/{api}/{tag}/{abi}",
         "semi": f"system-images;{api};{tag};{abi}",
-        "api": api,                                        # e.g. "android-36"
-        "tag": tag,                                        # e.g. "google_apis"
+        "api": api,                                        # e.g. "android-34"
+        "tag": tag,                                        # e.g. "google_apis_playstore"
         "abi": abi,                                        # e.g. "x86_64"
         "rel_sysdir": f"system-images/{api}/{tag}/{abi}",
         "rel_ramdisk": f"system-images/{api}/{tag}/{abi}/ramdisk.img",

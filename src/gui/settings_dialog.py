@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from config import load_config
-from constants import CONFIG_PATH
+from constants import CONFIG_PATH, DEFAULT_AVD_NAME
 from gui.icons import get_svg_icon, get_svg_pixmap
 from gui.theme import ThemePalette, list_themes
 
@@ -62,7 +62,7 @@ class SettingsDialog(QDialog):
         # AVD Name
         l1 = QLabel("AVD Name:")
         l1.setStyleSheet("font-weight: 600;")
-        self.avd_input = QLineEdit(self.cfg.get("vm", {}).get("avd_name", "Android16_Pro"))
+        self.avd_input = QLineEdit(self.cfg.get("vm", {}).get("avd_name", DEFAULT_AVD_NAME))
         form_layout.addWidget(l1)
         form_layout.addWidget(self.avd_input)
 

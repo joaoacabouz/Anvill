@@ -227,6 +227,7 @@ def root_avd(
 
             res = subprocess.run(
                 cmd,
+                input="\n\n",
                 cwd=str(tools_dir),
                 env=env,
                 capture_output=True,
