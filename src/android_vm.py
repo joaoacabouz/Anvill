@@ -126,8 +126,8 @@ except ImportError:
         print_hardware_panel,
     )
 
-API_LEVEL = 34
-TARGET_IMAGE = "system-images/android-34/google_apis_playstore/x86_64"
+API_LEVEL = 36
+TARGET_IMAGE = "system-images/android-36/google_apis_playstore/x86_64"
 
 
 class EmulatorNotFoundError(RuntimeError):

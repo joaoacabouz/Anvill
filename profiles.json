@@ -1,9 +1,9 @@
 {
-  "description": "VM hardware profiles and device spoofing profiles for Android 14 (API 34) with Google Play Store. Profiles use Tablet Landscape (16:9) horizontal layout for desktop player.",
+  "description": "VM hardware profiles and device spoofing profiles for Android 16 (API 36) with Google Play Store. Profiles use Tablet Landscape (16:9) horizontal layout for desktop player.",
   "metadata": {
-    "android_version": 14,
-    "api_level": 34,
-    "target_image": "system-images;android-34;google_apis_playstore;x86_64",
+    "android_version": 16,
+    "api_level": 36,
+    "target_image": "system-images;android-36;google_apis_playstore;x86_64",
     "last_updated": "2026-11-10"
   },
   "hardware_profiles": {

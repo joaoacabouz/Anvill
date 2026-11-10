@@ -1,6 +1,6 @@
 {
   "vm": {
-    "avd_name": "Android14_PlayStore",
+    "avd_name": "Android16_PlayStore",
     "auto_root_on_setup": true,
     "default_hardware_profile": "auto",
     "default_spoof_profile": "galaxy_tab_s9",
@@ -146,13 +146,13 @@
     }
   },
   "sdk": {
-    "target_image": "system-images/android-34/google_apis_playstore/x86_64",
+    "target_image": "system-images/android-36/google_apis_playstore/x86_64",
     "command_line_tools_url": "https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip",
     "openjdk_17_url": "https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse",
     "required_packages": [
       "emulator",
       "platform-tools",
-      "system-images/android-34/google_apis_playstore/x86_64",
+      "system-images/android-36/google_apis_playstore/x86_64",
       "extras/google/usb_driver",
       "extras/google/Android_Emulator_Hypervisor_Driver"
     ]
